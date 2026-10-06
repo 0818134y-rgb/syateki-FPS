@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>射的FPS – 友達と遊ぶ(P2P)</title>
+<style>
+  :root { --acc:#ffb347; --bg:rgba(10,12,28,.9); }
+  html, body { margin:0; height:100%; overflow:hidden; background:#05071a; color:#fff; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif; user-select:none; }
+  canvas#c { display:block; position:fixed; inset:0; }
+  #xhair { position:fixed; left:50%; top:50%; width:400px; height:400px; margin:-200px 0 0 -200px; pointer-events:none; z-index:5; }
+  .hud { position:fixed; pointer-events:none; z-index:5; text-shadow:0 0 6px #000, 0 0 2px #000; }
+  #mini { left:12px; top:12px; width:200px; height:150px; background:rgba(0,0,0,.45); border:1px solid #fff4; border-radius:6px; }
+  #dbg { left:12px; top:172px; font-size:12px; line-height:1.5; background:rgba(0,0,0,.4); padding:6px 10px; border-radius:6px; }
+  #fps { left:12px; bottom:12px; font-size:12px; opacity:.85; }
+  #top { left:50%; top:10px; transform:translateX(-50%); text-align:center; }
+  #top .sc { font-size:26px; font-weight:700; } #top .al { font-size:13px; opacity:.85; }
+  #kill { right:14px; top:12px; text-align:right; font-size:14px; line-height:1.7; }
+  #kill div { background:rgba(0,0,0,.45); padding:1px 8px; margin-bottom:2px; border-radius:4px; display:inline-block; }
+  #bl { left:14px; bottom:34px; font-size:16px; line-height:1.5; } #bl .big { font-size:34px; font-weight:700; }
+  #br { right:20px; bottom:16px; text-align:right; } #br .big { font-size:40px; font-weight:700; } #br small { display:block; font-size:14px; opacity:.85; }
+  #center { left:50%; top:22%; transform:translateX(-50%); font-size:26px; font-weight:700; text-align:center; color:var(--acc); }
+  #hitm { left:50%; top:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:700; opacity:0; }
+  #dead { left:50%; top:40%; transform:translateX(-50%); font-size:24px; display:none; text-align:center; }
+  #scope { position:fixed; inset:0; z-index:4; pointer-events:none; display:none; background:radial-gradient(circle at center, transparent 0, transparent 30vh, #000 30.4vh); }
+  #dmgov { position:fixed; inset:0; z-index:6; pointer-events:none; opacity:0; box-shadow:inset 0 0 160px 40px #c00; }
+  #dmgdir { position:fixed; left:50%; top:50%; width:0; height:0; z-index:6; pointer-events:none; opacity:0; }
+  #dmgdir i { position:absolute; left:-14px; top:-150px; border:14px solid transparent; border-bottom:26px solid #f33; }
+  #score { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:8; background:var(--bg); border:2px solid var(--acc); border-radius:12px; padding:14px 22px; min-width:520px; display:none; pointer-events:none; }
+  #score table { width:100%; border-collapse:collapse; font-size:15px; } #score td, #score th { padding:3px 8px; text-align:left; } #score th { color:var(--acc); }
+  #net { right:14px; bottom:96px; font-size:12px; opacity:.85; text-align:right; }
+  #menu { position:fixed; inset:0; z-index:20; background:rgba(5,7,26,.84); display:flex; align-items:center; justify-content:center; }
+  #panel { width:min(900px,96vw); height:min(640px,92vh); background:var(--bg); border:2px solid var(--acc); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; }
+  #panel header { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid #fff3; }
+  #panel header h1 { margin:0; font-size:20px; color:var(--acc); flex:1; }
+  #tabs { display:flex; gap:4px; padding:8px 12px 0; border-bottom:1px solid #fff3; flex-wrap:wrap; }
+  #tabs button { background:#fff1; color:#fff; border:0; padding:8px 14px; border-radius:8px 8px 0 0; cursor:pointer; font-size:14px; }
+  #tabs button.on { background:var(--acc); color:#111; font-weight:700; }
+  #body { flex:1; overflow:auto; padding:14px 18px; }
+  .row { display:flex; align-items:center; gap:12px; padding:5px 0; font-size:14px; border-bottom:1px solid #fff1; }
+  .row label { flex:0 0 250px; } .row input[type=range] { flex:1; accent-color:var(--acc); } .row .val { flex:0 0 64px; text-align:right; opacity:.85; }
+  .row select, .row button, textarea, input[type=text], input[type=password] { background:#1b2040; color:#fff; border:1px solid #fff4; border-radius:6px; padding:5px 10px; font-size:13px; }
+  .row input[type=text], .row input[type=password] { flex:1; font-size:15px; padding:7px 10px; }
+  .row button, .btn { cursor:pointer; } .btn { background:var(--acc); color:#111; border:0; border-radius:8px; padding:9px 18px; font-weight:700; font-size:15px; }
+  h2.sec { font-size:15px; color:var(--acc); margin:14px 0 4px; }
+  textarea { width:100%; box-sizing:border-box; height:56px; font-family:monospace; }
+  .xhwrap { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; }
+  .xhwrap canvas { background:linear-gradient(135deg,#566a86,#2a3348 60%,#403038); border:1px solid #fff4; border-radius:8px; }
+  .hint { font-size:12px; opacity:.75; line-height:1.7; margin:4px 0; } .err { color:#ff8a8a; font-size:14px; margin:8px 0; min-height:20px; }
+  footer { padding:10px 16px; border-top:1px solid #fff3; display:flex; gap:10px; align-items:center; } footer .hint { flex:1; margin:0; }
+  kbd { background:#333; border-radius:4px; padding:0 6px; border:1px solid #666; font-size:12px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><canvas id="xhair" width="400" height="400"></canvas><div id="scope"></div>
+<canvas id="mini" class="hud" width="200" height="150"></canvas>
+<div id="dbg" class="hud"></div><div id="fps" class="hud"></div>
+<div id="top" class="hud"><div class="sc" id="sc"></div><div class="al" id="al"></div></div>
+<div id="kill" class="hud"></div><div id="bl" class="hud"></div><div id="br" class="hud"></div><div id="net" class="hud"></div>
+<div id="center" class="hud"></div><div id="hitm" class="hud">✕</div><div id="dead" class="hud"></div>
+<div id="dmgov"></div><div id="dmgdir"><i></i></div><div id="score"></div>
+
+<div id="menu"><div id="panel">
+  <header><h1>🏮 射的FPS オンライン</h1><button class="btn" id="btnPlay">プレイ開始</button></header>
+  <div id="tabs"></div><div id="body"></div>
+  <footer><div class="hint">Esc でメニュー / Tab で スコアボード。設定はこのブラウザに自動保存されます。</div><button class="btn" id="btnReset" style="background:#f99">設定を初期化</button></footer>
+</div></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+/* ======= 共有ロジック(サーバー/クライアント共通: マップ・移動・武器・当たり判定) ======= */
+const G = (() => {
+// =====================================================================
+// shared/game.js  —  サーバーとクライアントで「完全に同じ」計算をするための共有モジュール
+//   ・マップ生成(壁・遮蔽物・スポーン)  ・プレイヤー移動(予測と権威で共用)
+//   ・武器データ/散布度  ・乱数(同じseedなら同じ弾道)  ・レイ判定(壁/箱)
+// 単位: 距離=メートル, 時間=秒, 角度=ラジアン。ブラウザ/Node.js どちらでも動く(依存なし)。
+// =====================================================================
+
+const GW = 40, GH = 30, CELL = 3;
+const TICK = 64, DT = 1 / TICK;
+
+const CFG = {
+  move: { runSpeed: 6.2, walkSpeed: 3.0, crouchSpeed: 3.0, accel: 55, decel: 70, airAccel: 6, jumpSpeed: 6.2, gravity: 20,
+          radius: 0.38, height: 1.8, crouchHeight: 1.25, eye: 1.62, crouchEye: 1.12, step: 0.15 },
+  stopThreshold: 1.0, footstepStride: 2.3,
+};
+
+/** 武器。sp = 散布(円錐の半角rad): stand=静止 / move=最大移動 / air=空中 / crouch=しゃがみ倍率 / bloom=連射の蓄積 */
+const WEAPONS = {
+  pistol:   { id: 'pistol',   name: 'コルクピストル', auto: false, interval: 0.17,  mag: 13, reload: 1.5, pellets: 1,  dmg: { h: 78, b: 26, l: 22 },
+              sp: { stand: 0.0, move: 0.045, air: 0.09, crouch: 0.7, bloom: 0.014, bloomMax: 0.035, rec: 0.10 }, kick: 0.010, kickYaw: 0.004, speed: 1.0,  col: 0xc4281c },
+  smg:      { id: 'smg',      name: 'ひまわりSMG',    auto: true,  interval: 0.075, mag: 30, reload: 2.2, pellets: 1,  dmg: { h: 78, b: 26, l: 22 },
+              sp: { stand: 0.006, move: 0.05, air: 0.09, crouch: 0.7, bloom: 0.007, bloomMax: 0.04, rec: 0.09 }, kick: 0.0075, kickYaw: 0.005, speed: 0.96, col: 0xe6b422 },
+  shotgun:  { id: 'shotgun',  name: '花火筒',         auto: false, interval: 0.85,  mag: 5,  reload: 2.4, pellets: 10, dmg: { h: 20, b: 11, l: 8 },
+              sp: { stand: 0.045, move: 0.06, air: 0.08, crouch: 0.8, bloom: 0, bloomMax: 0, rec: 1 }, kick: 0.04, kickYaw: 0.01, speed: 0.95, col: 0x8a5a2b, falloff: [7, 22] },
+  marksman: { id: 'marksman', name: '狛犬',           auto: true,  interval: 0.12,  mag: 24, reload: 2.6, pellets: 1,  dmg: { h: 115, b: 35, l: 29 },
+              sp: { stand: 0.004, move: 0.05, air: 0.09, crouch: 0.7, bloom: 0.01, bloomMax: 0.04, rec: 0.10 }, kick: 0.011, kickYaw: 0.004, speed: 0.95, col: 0x2f8f4e, zoom: 1.5 },
+  rifle:    { id: 'rifle',    name: '八咫(ヤタ)',     auto: true,  interval: 0.10,  mag: 25, reload: 2.5, pellets: 1,  dmg: { h: 160, b: 40, l: 34 },
+              sp: { stand: 0.0, move: 0.065, air: 0.10, crouch: 0.6, bloom: 0.008, bloomMax: 0.05, rec: 0.10 }, kick: 0.014, kickYaw: 0.006, speed: 0.95, col: 0x7a1d18 },
+  sniper:   { id: 'sniper',   name: '大玉砲',         auto: false, interval: 1.5,   mag: 5,  reload: 3.6, pellets: 1,  dmg: { h: 255, b: 150, l: 120 },
+              sp: { stand: 0.09, move: 0.12, air: 0.15, crouch: 0.8, bloom: 0, bloomMax: 0, rec: 1, scopedMove: 0.03 }, kick: 0.035, kickYaw: 0, speed: 0.88, col: 0x23232e, scope: [2.5, 5] },
+};
+const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'marksman', 'rifle', 'sniper'];
+
+/** seed付き乱数(mulberry32): 同じseedならサーバーとクライアントで同じ弾道になる */
+function mulberry32(a) {
+  return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/** 散布度 = 基本 + 移動/空中ペナルティ。ストッピングの正体(クライアントの予測とサーバーの検証で同じ式) */
+function computeSpread(w, speed, grounded, crouch, scoped) {
+  const sp = w.sp; const base = scoped ? 0 : sp.stand * (crouch ? sp.crouch : 1); let add = 0;
+  if (!grounded) add = sp.air;
+  else if (speed > CFG.stopThreshold) {
+    const t = clamp((speed - CFG.stopThreshold) / (CFG.move.runSpeed - CFG.stopThreshold), 0, 1);
+    add = (scoped && sp.scopedMove != null ? sp.scopedMove : sp.move) * (0.35 + 0.65 * t);
+  }
+  return { base, add };
+}
+/** 視線ベクトル(fwd)・右(right)・上(up) */
+function aimBasis(yaw, pitch) {
+  const cp = Math.cos(pitch), sp = Math.sin(pitch), sy = Math.sin(yaw), cy = Math.cos(yaw);
+  return { fwd: [-sy * cp, sp, -cy * cp], right: [cy, 0, -sy], up: [sy * sp, cp, cy * sp] };
+}
+/** 散布円錐の中で一様に1本の弾道を選ぶ(sqrtで円内を一様分布に) */
+function spreadDir(b, spread, rng) {
+  const ang = rng() * Math.PI * 2, rad = Math.tan(spread * Math.sqrt(rng())), c = Math.cos(ang) * rad, s = Math.sin(ang) * rad;
+  const x = b.fwd[0] + b.right[0] * c + b.up[0] * s, y = b.fwd[1] + b.right[1] * c + b.up[1] * s, z = b.fwd[2] + b.right[2] * c + b.up[2] * s, l = Math.hypot(x, y, z);
+  return [x / l, y / l, z / l];
+}
+
+// ---------------------------------------------------------------------
+// マップ(矩形コマンドで生成)。1セル=3m。z小=防衛側(北)、z大=攻撃側(南)
+//   # 壁  c 木箱  C 高い木箱  L 低い仕切り(跳び乗れる)  y 屋台  p 石灯籠
+// ---------------------------------------------------------------------
+const TYPES = { '#': { h: 5.5, inset: 0 }, c: { h: 1.4, inset: 0.25 }, C: { h: 2.6, inset: 0.2 }, L: { h: 0.9, inset: 0.2 }, y: { h: 3.2, inset: 0.1 } };
+const SITES = { A: { cx: 5, cz: 5 }, B: { cx: 34, cz: 5 } };
+const cellToWorld = (gx, gz) => ({ x: (gx + 0.5 - GW / 2) * CELL, z: (gz + 0.5 - GH / 2) * CELL });
+const worldToCell = (x, z) => [clamp(Math.floor(x / CELL + GW / 2), 0, GW - 1), clamp(Math.floor(z / CELL + GH / 2), 0, GH - 1)];
+
+function buildMap() {
+  const grid = Array.from({ length: GH }, () => Array(GW).fill('.'));
+  const rect = (ch, x0, z0, x1, z1) => { for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) grid[z][x] = ch; };
+  const sym = (ch, x0, z0, x1, z1) => { rect(ch, x0, z0, x1, z1); rect(ch, GW - 1 - x1, z0, GW - 1 - x0, z1); };   // 左右対称
+  rect('#', 0, 0, GW - 1, 0); rect('#', 0, GH - 1, GW - 1, GH - 1); rect('#', 0, 0, 0, GH - 1); rect('#', GW - 1, 0, GW - 1, GH - 1);
+  sym('#', 12, 1, 15, 2); sym('#', 12, 6, 17, 9); sym('#', 7, 10, 9, 11); sym('#', 12, 10, 15, 11);
+  sym('#', 7, 12, 7, 13); sym('#', 7, 16, 7, 17); sym('#', 14, 12, 15, 12); sym('#', 14, 15, 15, 17); sym('#', 7, 18, 7, 19); sym('#', 10, 18, 15, 19);
+  sym('#', 1, 25, 12, 28);
+  sym('C', 3, 3, 3, 4); sym('c', 6, 5, 7, 6); sym('L', 9, 3, 9, 4); sym('p', 10, 8, 10, 8); sym('L', 2, 8, 4, 8); sym('c', 8, 8, 8, 8); sym('c', 16, 1, 16, 1);
+  sym('c', 2, 13, 3, 14); sym('L', 5, 17, 6, 17); sym('C', 2, 20, 2, 21); sym('c', 5, 22, 5, 22); sym('L', 4, 11, 4, 11);
+  sym('L', 10, 15, 11, 15); sym('c', 12, 16, 13, 16);
+  rect('y', 19, 14, 20, 15); sym('c', 16, 12, 16, 12); sym('L', 17, 17, 18, 17); sym('c', 17, 19, 17, 19); sym('p', 18, 11, 18, 11);
+  sym('y', 8, 21, 10, 22); sym('y', 12, 23, 13, 24); rect('y', 19, 21, 20, 22);
+  sym('c', 4, 24, 4, 24); sym('C', 14, 20, 14, 20); sym('c', 6, 24, 7, 24); sym('p', 11, 20, 11, 20); sym('p', 17, 24, 17, 24); sym('L', 16, 21, 16, 22);
+  rect('.', 32, 5, 33, 6); rect('C', 32, 5, 32, 6); rect('c', 29, 7, 30, 7); rect('C', 33, 17, 34, 18); rect('c', 33, 22, 33, 22); rect('L', 30, 4, 30, 4);
+
+  // 隣接する同種セルを大きな箱へ統合(判定・描画の数を減らす)
+  const boxes = [], vis = Array.from({ length: GH }, () => Array(GW).fill(false)); let ci = 0;
+  for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+    const ch = grid[z][x], T = TYPES[ch]; if (!T || vis[z][x]) continue;
+    let x1 = x; while (x1 + 1 < GW && grid[z][x1 + 1] === ch && !vis[z][x1 + 1]) x1++;
+    let z1 = z, ok = true;
+    while (ok && z1 + 1 < GH) { for (let xx = x; xx <= x1; xx++) if (grid[z1 + 1][xx] !== ch || vis[z1 + 1][xx]) { ok = false; break; } if (ok) z1++; }
+    for (let zz = z; zz <= z1; zz++) for (let xx = x; xx <= x1; xx++) vis[zz][xx] = true;
+    boxes.push({ ch, ci: ci++, h: T.h, w: (x1 - x + 1) * CELL - T.inset * 2, d: (z1 - z + 1) * CELL - T.inset * 2, cx: ((x + x1 + 1) / 2 - GW / 2) * CELL, cz: ((z + z1 + 1) / 2 - GH / 2) * CELL });
+  }
+  for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) if (grid[z][x] === 'p') { const p = cellToWorld(x, z); boxes.push({ ch: 'p', ci: ci++, h: 2.0, w: 0.9, d: 0.9, cx: p.x, cz: p.z }); }
+  const colliders = boxes.map(b => ({ minX: b.cx - b.w / 2, maxX: b.cx + b.w / 2, minY: 0, maxY: b.h, minZ: b.cz - b.d / 2, maxZ: b.cz + b.d / 2 }));
+
+  // スポーン地点(攻撃=南の広間 / 防衛=北のベース)
+  const spawns = { atk: [], def: [] };
+  for (let z = 27; z <= 28; z++) for (let x = 16; x <= 23; x++) spawns.atk.push(cellToWorld(x, z));
+  for (let z = 1; z <= 3; z++) for (let x = 17; x <= 22; x++) spawns.def.push(cellToWorld(x, z));
+  return { grid, boxes, colliders, spawns };
+}
+
+// ---------------------------------------------------------------------
+// プレイヤー移動(サーバーとクライアントの予測で共用 = 入力が同じなら結果が同じ)
+//   p   : {x,y,z,vx,vy,vz,grounded,crouch}
+//   cmd : {ix,iz,jump,cr,walk,yaw}   ix=右+1 / iz=後ろ+1
+// ---------------------------------------------------------------------
+function resolveHorizontal(p, colliders, H) {
+  const r = CFG.move.radius, S0 = CFG.move.step;
+  for (let it = 0; it < 2; it++) for (const b of colliders) {
+    if (p.y >= b.maxY - S0 || p.y + H <= b.minY) continue;
+    const cx = clamp(p.x, b.minX, b.maxX), cz = clamp(p.z, b.minZ, b.maxZ), dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
+    if (d2 >= r * r) continue;
+    if (d2 > 1e-10) {
+      const d = Math.sqrt(d2), push = r - d, nx = dx / d, nz = dz / d; p.x += nx * push; p.z += nz * push;
+      const vn = p.vx * nx + p.vz * nz; if (vn < 0) { p.vx -= vn * nx; p.vz -= vn * nz; }      // 壁に向かう速度だけ消す(壁ずり)
+    } else {
+      const l = p.x - b.minX, rr = b.maxX - p.x, t = p.z - b.minZ, bt = b.maxZ - p.z, mn = Math.min(l, rr, t, bt);
+      if (mn === l) p.x = b.minX - r; else if (mn === rr) p.x = b.maxX + r; else if (mn === t) p.z = b.minZ - r; else p.z = b.maxZ + r;
+    }
+  }
+  const lx = GW * CELL / 2 - 1, lz = GH * CELL / 2 - 1; p.x = clamp(p.x, -lx, lx); p.z = clamp(p.z, -lz, lz);
+}
+function resolveVertical(p, prevY, colliders, H) {
+  const r = CFG.move.radius, S0 = CFG.move.step; p.grounded = false; let floor = 0;
+  for (const b of colliders) if (p.x > b.minX - r * 0.7 && p.x < b.maxX + r * 0.7 && p.z > b.minZ - r * 0.7 && p.z < b.maxZ + r * 0.7) {
+    if (p.vy <= 0 && prevY >= b.maxY - S0 && p.y <= b.maxY) floor = Math.max(floor, b.maxY);
+    else if (p.vy > 0 && prevY + H <= b.minY + 0.02 && p.y + H > b.minY) { p.y = b.minY - H; p.vy = 0; }
+  }
+  if (p.y <= floor) { p.y = floor; p.vy = 0; p.grounded = true; }
+}
+function stepPlayer(p, cmd, dt, colliders, wspeed = 1) {
+  const m = CFG.move; let ix = cmd.ix, iz = cmd.iz; const len = Math.hypot(ix, iz); if (len > 0) { ix /= len; iz /= len; }
+  p.crouch = !!cmd.cr;
+  const sy = Math.sin(cmd.yaw), cy = Math.cos(cmd.yaw), wishX = cy * ix + sy * iz, wishZ = -sy * ix + cy * iz;
+  const maxSpeed = (p.crouch ? m.crouchSpeed : cmd.walk ? m.walkSpeed : m.runSpeed) * wspeed;
+  const rate = p.grounded ? (len > 0 ? m.accel : m.decel) : (len > 0 ? m.airAccel : 0);
+  let dx = wishX * maxSpeed - p.vx, dz = wishZ * maxSpeed - p.vz; const dl = Math.hypot(dx, dz), md = rate * dt;
+  if (dl > md) { dx *= md / dl; dz *= md / dl; } p.vx += dx; p.vz += dz;
+  if (cmd.jump && p.grounded) { p.vy = m.jumpSpeed; p.grounded = false; }
+  p.vy -= m.gravity * dt;
+  const H = p.crouch ? m.crouchHeight : m.height, prevY = p.y;
+  p.x += p.vx * dt; p.z += p.vz * dt; resolveHorizontal(p, colliders, H);
+  p.y += p.vy * dt; resolveVertical(p, prevY, colliders, H);
+}
+
+// ---------------------------------------------------------------------
+// レイ判定(壁・箱・床)。弾道の遮蔽/視線チェック/サーバーの命中判定で共用
+// ---------------------------------------------------------------------
+function rayBox(ox, oy, oz, dx, dy, dz, b) {
+  let t0 = 0, t1 = Infinity, ta, tb, tmp;
+  if (Math.abs(dx) < 1e-9) { if (ox < b.minX || ox > b.maxX) return Infinity; } else { ta = (b.minX - ox) / dx; tb = (b.maxX - ox) / dx; if (ta > tb) { tmp = ta; ta = tb; tb = tmp; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) return Infinity; }
+  if (Math.abs(dy) < 1e-9) { if (oy < b.minY || oy > b.maxY) return Infinity; } else { ta = (b.minY - oy) / dy; tb = (b.maxY - oy) / dy; if (ta > tb) { tmp = ta; ta = tb; tb = tmp; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) return Infinity; }
+  if (Math.abs(dz) < 1e-9) { if (oz < b.minZ || oz > b.maxZ) return Infinity; } else { ta = (b.minZ - oz) / dz; tb = (b.maxZ - oz) / dz; if (ta > tb) { tmp = ta; ta = tb; tb = tmp; } if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) return Infinity; }
+  return t0;
+}
+/** 最初に当たる壁/箱/床までの距離(単位ベクトル方向) */
+function rayWorld(o, d, colliders, maxT = 90) {
+  let t = maxT; if (d[1] < -1e-6) t = Math.min(t, -o[1] / d[1]);
+  for (const b of colliders) { const h = rayBox(o[0], o[1], o[2], d[0], d[1], d[2], b); if (h < t) t = h; }
+  return Math.max(0, t);
+}
+/** 2点間に壁がないか(視線) */
+function lineClear(colliders, ax, ay, az, bx, by, bz) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az, l = Math.hypot(dx, dy, dz); if (l < 1e-6) return true;
+  const ux = dx / l, uy = dy / l, uz = dz / l;
+  for (const b of colliders) if (rayBox(ax, ay, az, ux, uy, uz, b) < l) return false;
+  return true;
+}
+/** 頭の球 / 体の箱 に対するレイ判定。pos={x,y,z,cr}。戻り {t, part:'h'|'b'|'l'} か null */
+function rayPlayer(o, d, pos) {
+  const cr = pos.cr, hc = [pos.x, pos.y + (cr ? 1.2 : 1.66), pos.z], hr = 0.21;
+  let best = null;
+  { const ox = o[0] - hc[0], oy = o[1] - hc[1], oz = o[2] - hc[2], b = ox * d[0] + oy * d[1] + oz * d[2], c = ox * ox + oy * oy + oz * oz - hr * hr, disc = b * b - c;
+    if (disc >= 0) { const t = -b - Math.sqrt(disc); if (t >= 0) best = { t, part: 'h' }; } }
+  const bodyH = cr ? 1.0 : 1.45, t = rayBox(o[0], o[1], o[2], d[0], d[1], d[2], { minX: pos.x - 0.3, maxX: pos.x + 0.3, minY: pos.y, maxY: pos.y + bodyH, minZ: pos.z - 0.3, maxZ: pos.z + 0.3 });
+  if (t < Infinity && (!best || t < best.t)) { const hy = o[1] + d[1] * t - pos.y; best = { t, part: hy < (cr ? 0.5 : 0.8) ? 'l' : 'b' }; }
+  return best;
+}
+
+return { GW, GH, CELL, TICK, DT, CFG, WEAPONS, WEAPON_ORDER, mulberry32, clamp, computeSpread, aimBasis, spreadDir, TYPES, SITES, cellToWorld, worldToCell, buildMap, stepPlayer, rayBox, rayWorld, lineClear, rayPlayer };
+})();
+
+/* ======================================================================
+ * ホスト(権威サーバー)コア — ホストの「ブラウザの中」で動く
+ *   server.js と同じロジックを、WebSocketではなく「conn」抽象(open/send/close)に載せ替えたもの。
+ *   conn はWebRTC(PeerJS)でも、ホスト自身のループバックでも同じ形で扱える。
+ * ====================================================================== */
+function createHost(G, opts = {}) {
+  const PASS = opts.pass || '', KILL_LIMIT = opts.killLimit || 20, MAX_PLAYERS = opts.maxPlayers || 8;
+  const map = G.buildMap(), players = new Map(), evQueue = [];
+  let nextId = 1, match = { atk: 0, def: 0, over: false, resetAt: 0 }, tickN = 0;
+  const nowMs = () => performance.now();
+  const HIST_MS = 1200, MAX_REWIND_MS = 250;      // 巻き戻しの上限(これ以上の高pingは補償しない)
+
+  const send = (c, o) => { if (c.open) c.send(o); };
+  const broadcast = (o, except) => { for (const p of players.values()) if (p !== except && p.ws.open) p.ws.send(o); };
+  const eyeOf = p => p.st.y + (p.st.crouch ? G.CFG.move.crouchEye : G.CFG.move.eye);
+
+  function spawnPlayer(p) {
+    const list = map.spawns[p.team], enemies = [...players.values()].filter(q => q.alive && q.team !== p.team);
+    let best = list[0], bd = -1;                                  // 敵から一番遠いスポーン点(スポーンキル対策)
+    for (const s of [...list].sort(() => Math.random() - 0.5).slice(0, 6)) { const d = enemies.reduce((m, e) => Math.min(m, Math.hypot(e.st.x - s.x, e.st.z - s.z)), 999); if (d > bd) { bd = d; best = s; } }
+    p.st = { x: best.x, y: 0, z: best.z, vx: 0, vy: 0, vz: 0, grounded: true, crouch: false };
+    p.yaw = p.team === 'atk' ? 0 : Math.PI; p.pitch = 0; p.hp = 100; p.alive = true; p.protectUntil = nowMs() + 1500;
+    p.ammo = {}; for (const id in G.WEAPONS) p.ammo[id] = G.WEAPONS[id].mag;
+    p.reloadUntil = 0; p.nextFire = 0; p.bloom = 0; p.hist = []; p.spawnCount = (p.spawnCount || 0) + 1;
+  }
+  function addPlayer(ws, name) {
+    const cnt = { atk: 0, def: 0 }; for (const q of players.values()) cnt[q.team]++;
+    const team = cnt.atk === cnt.def ? (Math.random() < 0.5 ? 'atk' : 'def') : (cnt.atk < cnt.def ? 'atk' : 'def');
+    const p = { id: nextId++, ws, name: String(name || 'player').slice(0, 14), team, st: null, yaw: 0, pitch: 0, wid: 'rifle', ammo: {}, hp: 100, alive: false, respawnAt: 0, kills: 0, deaths: 0,
+                lastSeq: 0, tokens: 0.25, lastCmdAt: nowMs(), hist: [], stepDist: 0, walk: false };
+    players.set(p.id, p); spawnPlayer(p); return p;
+  }
+  function resetMatch() { match = { atk: 0, def: 0, over: false, resetAt: 0 }; for (const p of players.values()) { p.kills = p.deaths = 0; spawnPlayer(p); } broadcast({ t: 'matchstart' }); }
+
+  function posAt(p, t) {                                          // 時刻tの位置を履歴から線形補間(ラグ補償の巻き戻し)
+    const h = p.hist; if (!h.length) return null;
+    if (t >= h[h.length - 1].t) return h[h.length - 1];
+    if (t <= h[0].t) return h[0];
+    for (let i = h.length - 1; i > 0; i--) if (h[i - 1].t <= t) { const a = h[i - 1], b = h[i], k = (t - a.t) / (b.t - a.t || 1); return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z + (b.z - a.z) * k, cr: b.cr }; }
+    return h[0];
+  }
+  function onCmd(p, m) {
+    if (!p.alive) { p.lastSeq = m.seq | 0; return; }
+    const t = nowMs(); p.tokens = Math.min(0.3, p.tokens + (t - p.lastCmdAt) / 1000); p.lastCmdAt = t;    // 1tick分ずつ消費 → 速度改ざん防止
+    if (p.tokens < G.DT * 0.999) { p.lastSeq = m.seq | 0; return; }
+    p.tokens -= G.DT;
+    const w = G.WEAPONS[p.wid], cmd = { ix: Math.sign(m.ix | 0), iz: Math.sign(m.iz | 0), jump: !!m.jump, cr: !!m.cr, walk: !!m.walk, yaw: Number.isFinite(m.yaw) ? m.yaw : p.yaw };
+    const scoped = !!m.sc && !!(w.scope || w.zoom);
+    p.yaw = cmd.yaw; p.pitch = G.clamp(Number.isFinite(m.pitch) ? m.pitch : 0, -1.56, 1.56); p.walk = cmd.walk; p.scoped = scoped;
+    G.stepPlayer(p.st, cmd, G.DT, map.colliders, w.speed * (scoped ? 0.6 : 1));
+    p.lastSeq = m.seq | 0;
+    const sp = Math.hypot(p.st.vx, p.st.vz);                      // 足音: 走っている時だけ。サーバーが決めるので全員に同じ結果
+    if (p.st.grounded && sp > G.CFG.move.walkSpeed + 0.3 && !cmd.walk && !p.st.crouch) { p.stepDist += sp * G.DT; if (p.stepDist >= G.CFG.footstepStride) { p.stepDist = 0; evQueue.push({ e: 'step', id: p.id, x: p.st.x, y: p.st.y, z: p.st.z }); } }
+    else if (sp < 0.5) p.stepDist = G.CFG.footstepStride * 0.6;
+  }
+  function onFire(p, m) {
+    if (!p.alive || match.over) return; const t = nowMs(), w = G.WEAPONS[p.wid];
+    if (m.wid !== p.wid || t < p.nextFire || t < p.reloadUntil || p.ammo[p.wid] <= 0) return;
+    p.ammo[p.wid]--; p.nextFire = t + w.interval * 1000 * 0.9;
+    p.bloom = Math.max(0, p.bloom - w.sp.rec * 2 * Math.max(0, (t - (p.lastShotAt || t)) / 1000)); p.lastShotAt = t;
+    const speed = Math.hypot(p.st.vx, p.st.vz), c = G.computeSpread(w, speed, p.st.grounded, p.st.crouch, p.scoped);
+    const spread = c.base + c.add + p.bloom;
+    const yaw = Number.isFinite(m.yaw) ? m.yaw : p.yaw, pitch = G.clamp(Number.isFinite(m.pitch) ? m.pitch : 0, -1.56, 1.56), basis = G.aimBasis(yaw, pitch);
+    const rng = G.mulberry32(m.seed >>> 0), origin = [p.st.x, eyeOf(p), p.st.z];
+    const rt = G.clamp(Number.isFinite(m.rt) ? m.rt : t, t - MAX_REWIND_MS, t);
+    const targets = []; for (const q of players.values()) if (q !== p && q.alive && q.team !== p.team && t > q.protectUntil) { const pos = posAt(q, rt); if (pos) targets.push([q, pos]); }
+    const ends = [], dmgBy = new Map();
+    for (let i = 0; i < w.pellets; i++) {
+      const d = G.spreadDir(basis, spread, rng), wt = G.rayWorld(origin, d, map.colliders, 90);
+      let hit = null; for (const [q, pos] of targets) { const r = G.rayPlayer(origin, d, pos); if (r && r.t < wt && (!hit || r.t < hit.t)) hit = { ...r, q }; }
+      const te = hit ? hit.t : wt; if (i < 3) ends.push([origin[0] + d[0] * te, origin[1] + d[1] * te, origin[2] + d[2] * te, hit ? 1 : 0]);
+      if (hit) { let dmg = w.dmg[hit.part]; if (w.falloff) dmg *= G.clamp(1 - (hit.t - w.falloff[0]) / (w.falloff[1] - w.falloff[0]), 0.2, 1);
+        const e = dmgBy.get(hit.q) || { dmg: 0, part: 'b' }; e.dmg += dmg; if (hit.part === 'h') e.part = 'h'; dmgBy.set(hit.q, e); }
+    }
+    p.bloom = Math.min(w.sp.bloomMax, p.bloom + w.sp.bloom);
+    broadcast({ t: 'shot', id: p.id, w: p.wid, o: origin, ends });
+    for (const [q, e] of dmgBy) damage(q, p, e.dmg, e.part);
+  }
+  function damage(q, from, dmg, part) {
+    q.hp -= dmg; send(from.ws, { t: 'hitc', head: part === 'h', kill: q.hp <= 0 }); send(q.ws, { t: 'dmg', from: from.id });
+    if (q.hp > 0) return;
+    q.hp = 0; q.alive = false; q.deaths++; from.kills++; q.respawnAt = nowMs() + 3000; match[from.team]++;
+    broadcast({ t: 'kill', k: from.id, v: q.id, part, w: from.wid });
+    if (!match.over && match[from.team] >= KILL_LIMIT) { match.over = true; match.resetAt = nowMs() + 8000; broadcast({ t: 'matchend', winner: from.team }); }
+  }
+
+  /** 接続を受け付ける。戻り値の message(m) / close() を、受信時・切断時に呼ぶ */
+  function attach(conn) {
+    let p = null; const joinTimer = setTimeout(() => { if (!p) conn.close(); }, 10000);
+    return {
+      message(m) {
+        if (!m || typeof m !== 'object') return;
+        if (!p) {
+          if (m.t !== 'join') return;
+          if (PASS && m.pass !== PASS) { send(conn, { t: 'error', msg: '合言葉が違います' }); return setTimeout(() => conn.close(), 200); }
+          if (players.size >= MAX_PLAYERS) { send(conn, { t: 'error', msg: '満員です' }); return setTimeout(() => conn.close(), 200); }
+          p = addPlayer(conn, m.name); clearTimeout(joinTimer);
+          send(conn, { t: 'welcome', id: p.id, team: p.team, st: nowMs(), killLimit: KILL_LIMIT, roster: [...players.values()].map(q => ({ id: q.id, name: q.name, team: q.team })) });
+          broadcast({ t: 'pj', id: p.id, name: p.name, team: p.team }, p);
+          return;
+        }
+        switch (m.t) {
+          case 'cmd': onCmd(p, m); break;
+          case 'fire': onFire(p, m); break;
+          case 'equip': if (G.WEAPONS[m.wid] && p.alive && m.wid !== p.wid) { p.wid = m.wid; p.nextFire = nowMs() + 400; p.reloadUntil = 0; } break;
+          case 'reload': { const w = G.WEAPONS[p.wid]; if (p.alive && p.ammo[p.wid] < w.mag && nowMs() >= p.reloadUntil) { p.reloadUntil = nowMs() + w.reload * 1000; p.reloadWid = p.wid; } break; }
+          case 'ping': send(conn, { t: 'pong', c: m.c, s: nowMs() }); break;
+        }
+      },
+      close() { clearTimeout(joinTimer); if (p && players.get(p.id) === p) { players.delete(p.id); broadcast({ t: 'pl', id: p.id }); } },
+    };
+  }
+
+  /** 64Hzで呼ぶメインループ */
+  function tick() {
+    const t = nowMs(); tickN++;
+    for (const p of players.values()) {
+      if (p.alive) { p.hist.push({ t, x: p.st.x, y: p.st.y, z: p.st.z, cr: p.st.crouch }); while (p.hist.length && p.hist[0].t < t - HIST_MS) p.hist.shift(); }
+      else if (!match.over && t >= p.respawnAt) spawnPlayer(p);
+      if (p.reloadUntil && t >= p.reloadUntil) { p.reloadUntil = 0; if (p.reloadWid === p.wid) p.ammo[p.wid] = G.WEAPONS[p.wid].mag; }
+    }
+    if (match.over && t >= match.resetAt) resetMatch();
+    if (tickN % 2) return;                                         // スナップショットは32Hz
+    const pl = [...players.values()].map(q => ({ i: q.id, x: +q.st.x.toFixed(3), y: +q.st.y.toFixed(3), z: +q.st.z.toFixed(3), a: +q.yaw.toFixed(3), p: +q.pitch.toFixed(3), c: q.st.crouch ? 1 : 0, h: Math.ceil(q.hp), l: q.alive ? 1 : 0, w: q.wid, k: q.kills, d: q.deaths, n: q.spawnCount }));
+    const base = { t: 'snap', st: t, pl, sc: { atk: match.atk, def: match.def }, over: match.over, ev: evQueue.splice(0) };
+    for (const q of players.values()) {
+      const s = q.st, self = { x: +s.x.toFixed(4), y: +s.y.toFixed(4), z: +s.z.toFixed(4), vx: +s.vx.toFixed(4), vy: +s.vy.toFixed(4), vz: +s.vz.toFixed(4), g: s.grounded ? 1 : 0, cr: s.crouch ? 1 : 0, hp: Math.ceil(q.hp), al: q.alive ? 1 : 0, am: q.ammo[q.wid], rl: q.reloadUntil ? 1 : 0 };
+      send(q.ws, { ...base, ack: q.lastSeq, self });
+    }
+  }
+  return { attach, tick, players, map, count: () => players.size };
+}
+
+
+/* ======================================================================
+ * 通信層(WebRTC)
+ *   PeerJS の無料クラウド(接続の仲介だけ)を使い、ブラウザ同士を直接つなぐ。
+ *   ゲームのデータはホストのブラウザと参加者のブラウザの間を直接流れる(自前サーバー不要)。
+ *   URL末尾に #local を付けると、同じPC内の別タブ同士でテストできる(BroadcastChannel)。
+ * ====================================================================== */
+class LocalConn {
+  constructor(peer, to, cid) { this.peer = peer; this.peer_id = to; this.cid = cid; this.open = false; this.h = {}; }
+  on(ev, f) { this.h[ev] = f; return this; }
+  _emit(ev, a) { this.h[ev] && this.h[ev](a); }
+  send(d) { this.peer.bc.postMessage({ k: 'data', to: this.peer_id, from: this.peer.id, cid: this.cid, d: JSON.parse(JSON.stringify(d)) }); }
+  close() { if (!this.open) return; this.open = false; this.peer.bc.postMessage({ k: 'close', to: this.peer_id, from: this.peer.id, cid: this.cid }); }
+}
+class LocalPeer {
+  constructor(id) { this.id = id || 'p' + Math.random().toString(36).slice(2, 8); this.h = {}; this.conns = new Map(); this.bc = new BroadcastChannel('shateki-test'); this.bc.onmessage = e => this._on(e.data); setTimeout(() => this._emit('open', this.id), 0); }
+  on(ev, f) { this.h[ev] = f; return this; }
+  _emit(ev, a) { this.h[ev] && this.h[ev](a); }
+  connect(to) { const c = new LocalConn(this, to, Math.random().toString(36).slice(2)); this.conns.set(c.cid, c); this.bc.postMessage({ k: 'hello', to, from: this.id, cid: c.cid }); return c; }
+  _on(m) {
+    if (m.to !== this.id) return;
+    if (m.k === 'hello') { const c = new LocalConn(this, m.from, m.cid); c.open = true; this.conns.set(m.cid, c); this._emit('connection', c); setTimeout(() => { c._emit('open'); this.bc.postMessage({ k: 'ack', to: m.from, from: this.id, cid: m.cid }); }, 0); }
+    else if (m.k === 'ack') { const c = this.conns.get(m.cid); if (c) { c.open = true; c._emit('open'); } }
+    else if (m.k === 'data') { const c = this.conns.get(m.cid); if (c) c._emit('data', m.d); }
+    else if (m.k === 'close') { const c = this.conns.get(m.cid); if (c) { c.open = false; c._emit('close'); this.conns.delete(m.cid); } }
+  }
+}
+const USE_LOCAL = location.hash.includes('local');
+const ROOM_PREFIX = 'shateki-fes-';
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';           // 紛らわしい文字(0/O, 1/I)を除く
+const randCode = () => Array.from({ length: 5 }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join('');
+function makePeer(id) {
+  return new Promise((resolve, reject) => {
+    let peer; try { peer = USE_LOCAL ? new LocalPeer(id) : new window.Peer(id, { debug: 0 }); } catch (e) { return reject(new Error('通信ライブラリを読み込めませんでした(インターネット接続を確認してください)')); }
+    const timer = setTimeout(() => reject(new Error('仲介サーバーに接続できません(ネット接続/ファイアウォールを確認)')), 12000);
+    peer.on('open', () => { clearTimeout(timer); resolve(peer); });
+    peer.on('error', err => { clearTimeout(timer); reject(Object.assign(new Error(err.type === 'unavailable-id' ? 'ID重複' : '通信エラー: ' + (err.type || err.message)), { type: err.type })); });
+  });
+}
+
+
+const { GW, GH, CELL, DT, CFG, WEAPONS, WEAPON_ORDER, clamp } = G;
+
+const $ = id => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const lerp = (a, b, t) => a + (b - a) * t;
+const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const INTERP_MS = 100;           // 他プレイヤーは約100ms過去を補間して描画(滑らかさと引き換え)
+
+/* ======================================================================
+ * 1. 設定(localStorage) と VALORANT互換クロスヘア
+ * ====================================================================== */
+const XH_COLORS = ['#ffffff', '#00ff00', '#7fff00', '#dfff00', '#ffff00', '#00ffff', '#ff00ff', '#ff0000'];
+const XH_DEFAULT = () => ({ color: 1, custom: false, hex: '#00ff00', outlines: true, outlineOpacity: 0.5, outlineThickness: 1, dot: false, dotOpacity: 1, dotSize: 2,
+  inner: { show: true, opacity: 0.8, len: 6, lenV: 6, thick: 2, offset: 3, moveErr: false, fireErr: false },
+  outer: { show: true, opacity: 0.35, len: 2, lenV: 2, thick: 2, offset: 10, moveErr: false, fireErr: false } });
+const DEFAULTS = {
+  sens: 0.6, adsMul: 1.0, invertY: false, fov: 80, volume: 0.7, stepVol: 1.0, sfxVol: 1.0,
+  gfx: { outline: true, fog: true, scale: 1.0, showFps: true, minimap: true, debug: false, bob: true, viewmodel: true, soundViz: true, lights: 3, autoRes: true, maxDpr: 1.5 },
+  keys: { fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', crouch: 'KeyC', walk: 'ShiftLeft', reload: 'KeyR', score: 'Tab' },
+  net: { name: '', pass: '', mode: 'host', code: '' }, xhair: XH_DEFAULT(),
+};
+const deepMerge = (t, s) => { for (const k in s) { if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]) && t[k] && typeof t[k] === 'object') deepMerge(t[k], s[k]); else t[k] = s[k]; } return t; };
+const LS_KEY = 'shateki_p2p_v1';
+let S = (() => { try { const j = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (j) return deepMerge(structuredClone(DEFAULTS), j); } catch (e) {} return structuredClone(DEFAULTS); })();
+if (!S.net.name) S.net.name = 'プレイヤー' + ((Math.random() * 900 + 100) | 0);
+const saveSettings = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} };
+
+// VALORANTコード: "0;P;c;5;h;0;0t;2;0l;4;0o;2;0a;1;0f;0;1b;0" (主要キーのみ対応 / 未対応キーは無視)
+function xhParse(code) {
+  const t = code.trim().split(';'); if (t.length < 3) throw new Error('コードの形式が正しくありません');
+  const x = XH_DEFAULT(); let sec = 'P', i = 1; const lv = { 0: false, 1: false };
+  while (i < t.length) {
+    const k = t[i]; if (k === 'P' || k === 'A' || k === 'S') { sec = k; i++; continue; }
+    const v = t[i + 1]; i += 2; if (sec !== 'P' || v === undefined || v === '') continue; const n = parseFloat(v);
+    switch (k) {
+      case 'c': x.color = clamp(n | 0, 0, 7); break; case 'u': x.custom = true; x.hex = '#' + v.replace('#', '').slice(0, 6); break;
+      case 'h': x.outlines = n !== 0; break; case 'o': x.outlineOpacity = clamp(n, 0, 1); break; case 't': x.outlineThickness = clamp(n, 0, 6); break;
+      case 'd': x.dot = n !== 0; break; case 'a': x.dotOpacity = clamp(n, 0, 1); break; case 'z': x.dotSize = clamp(n, 0, 6); break;
+      default: { const m = k.match(/^([01])([a-z])$/); if (!m) break; const L = m[1] === '0' ? x.inner : x.outer;
+        switch (m[2]) { case 'b': L.show = n !== 0; break; case 't': L.thick = clamp(n, 0, 10); break; case 'l': L.len = clamp(n, 0, 20); if (!lv[m[1]]) L.lenV = L.len; break;
+          case 'v': L.lenV = clamp(n, 0, 20); lv[m[1]] = true; break; case 'o': L.offset = clamp(n, 0, 20); break; case 'a': L.opacity = clamp(n, 0, 1); break;
+          case 'm': L.moveErr = n !== 0; break; case 'f': L.fireErr = n !== 0; break; } }
+    }
+  }
+  return x;
+}
+function xhExport(x) {
+  const D = XH_DEFAULT(), p = [], f = n => String(Number(n.toFixed(3))), add = (k, v, d) => { if (v !== d) p.push(k, typeof v === 'boolean' ? (v ? 1 : 0) : f(v)); };
+  p.push('c', x.color); if (x.custom) p.push('u', x.hex.replace('#', '').toUpperCase() + 'FF');
+  add('h', x.outlines, D.outlines); add('o', x.outlineOpacity, D.outlineOpacity); add('t', x.outlineThickness, D.outlineThickness); add('d', x.dot, D.dot); add('a', x.dotOpacity, D.dotOpacity); add('z', x.dotSize, D.dotSize);
+  for (const [n, L, d] of [['0', x.inner, D.inner], ['1', x.outer, D.outer]]) { add(n + 'b', L.show, d.show); add(n + 't', L.thick, d.thick); add(n + 'l', L.len, d.len); if (L.lenV !== L.len) p.push(n + 'v', f(L.lenV)); add(n + 'o', L.offset, d.offset); add(n + 'a', L.opacity, d.opacity); add(n + 'm', L.moveErr, d.moveErr); add(n + 'f', L.fireErr, d.fireErr); }
+  return '0;P;' + p.join(';');
+}
+function drawCrosshair(ctx, cx, cy, x, movePx, firePx) {
+  const col = x.custom ? x.hex : XH_COLORS[x.color], R = Math.round, rects = [];
+  for (const L of [x.outer, x.inner]) { if (!L.show || L.opacity <= 0) continue; const gap = L.offset + (L.moveErr ? movePx : 0) + (L.fireErr ? firePx : 0), t = L.thick;
+    rects.push({ x: cx + gap, y: cy - t / 2, w: L.len, h: t, a: L.opacity }, { x: cx - gap - L.len, y: cy - t / 2, w: L.len, h: t, a: L.opacity }, { x: cx - t / 2, y: cy - gap - L.lenV, w: t, h: L.lenV, a: L.opacity }, { x: cx - t / 2, y: cy + gap, w: t, h: L.lenV, a: L.opacity }); }
+  if (x.dot && x.dotSize > 0) rects.push({ x: cx - x.dotSize / 2, y: cy - x.dotSize / 2, w: x.dotSize, h: x.dotSize, a: x.dotOpacity });
+  if (x.outlines && x.outlineThickness > 0) { const o = x.outlineThickness; ctx.fillStyle = '#000'; for (const r of rects) { ctx.globalAlpha = x.outlineOpacity * Math.min(1, r.a + 0.4); ctx.fillRect(R(r.x - o), R(r.y - o), R(r.w) + o * 2, R(r.h) + o * 2); } }
+  ctx.fillStyle = col; for (const r of rects) { ctx.globalAlpha = r.a; ctx.fillRect(R(r.x), R(r.y), Math.max(1, R(r.w)), Math.max(1, R(r.h))); } ctx.globalAlpha = 1;
+}
+
+/* ======================================================================
+ * 2. シーン・マップ描画(共有モジュールのマップから生成)
+ * ====================================================================== */
+const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: devicePixelRatio < 1.5, powerPreference: 'high-performance' });
+const pointLights = []; let dynScale = 1;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0f2c);
+const camera = new THREE.PerspectiveCamera(S.fov, innerWidth / innerHeight, 0.05, 200); camera.rotation.order = 'YXZ'; scene.add(camera);
+const gradientMap = (() => { const tex = new THREE.DataTexture(new Uint8Array([70, 150, 255]), 3, 1, THREE.RedFormat); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.needsUpdate = true; return tex; })();
+const toon = (color, emissive = 0, ei = 0) => new THREE.MeshToonMaterial({ color, gradientMap, emissive, emissiveIntensity: ei });
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0b0b14, side: THREE.BackSide }), outlineMeshes = [];
+scene.add(new THREE.HemisphereLight(0x8aa0ff, 0x3a2a20, 1.0)); const moon = new THREE.DirectionalLight(0xaab8ff, 0.7); moon.position.set(-20, 40, 20); scene.add(moon);
+
+const MAP = G.buildMap(), colliders = MAP.colliders, grid = MAP.grid;
+const isBlocked = (gx, gz) => gx < 0 || gz < 0 || gx >= GW || gz >= GH || 'ccCLyp#'.includes(grid[gz][gx]);
+const COL = { '#': [0x9b8e7c, 0x8a7e6d, 0xa49784], c: [0xa87a45, 0x9a6d3c], C: [0x8f5f35, 0x7e5430], L: [0x6f5a45, 0x806a52], y: [0x7a5230], p: [0x77746f] };
+const staticSpecs = [], worldMeshes = [];
+const addBox = s => staticSpecs.push(s);
+for (const b of MAP.boxes) {
+  addBox({ w: b.w, h: b.h, d: b.d, x: b.cx, y: 0, z: b.cz, color: COL[b.ch][b.ci % COL[b.ch].length] });
+  if (b.ch === 'y') { const n = Math.max(2, Math.round(b.w / 1.5)), sw = (b.w + 1.2) / n;   // 屋台の縞屋根
+    for (let i = 0; i < n; i++) addBox({ w: sw, h: 0.3, d: b.d + 1.2, x: b.cx - (b.w + 1.2) / 2 + sw * (i + 0.5), y: b.h, z: b.cz, color: i % 2 ? 0xf2efe6 : 0xb3261e, outline: false }); }
+  if (b.ch === 'p') { addBox({ w: 0.7, h: 0.5, d: 0.7, x: b.cx, y: 2.0, z: b.cz, color: 0xffc66a, emissive: 0xffa040, ei: 1.4 }); addBox({ w: 1.2, h: 0.2, d: 1.2, x: b.cx, y: 2.5, z: b.cz, color: 0x55534f }); }
+}
+(function finalizeStatic() {                   // 色ごとに1メッシュへ統合(描画回数を削減)
+  const groups = new Map(), outGeos = [];
+  for (const s of staticSpecs) { const key = `${s.color}|${s.emissive || 0}|${s.ei || 0}`, g = new THREE.BoxGeometry(s.w, s.h, s.d); g.translate(s.x, s.y + s.h / 2, s.z);
+    if (!groups.has(key)) groups.set(key, []); groups.get(key).push(g);
+    if (s.outline !== false) { const o = new THREE.BoxGeometry(s.w + 0.08, s.h + 0.08, s.d + 0.08); o.translate(s.x, s.y + s.h / 2, s.z); outGeos.push(o); } }
+  for (const [key, geos] of groups) { const [c, e, ei] = key.split('|').map(Number), m = new THREE.Mesh(mergeGeometries(geos), toon(c, e, ei)); scene.add(m); worldMeshes.push(m); }
+  const om = new THREE.Mesh(mergeGeometries(outGeos), outlineMat); scene.add(om); outlineMeshes.push(om);
+})();
+(function buildFloor() {
+  const FT = 4, fw = GW * FT, fh = GH * FT, data = new Uint8Array(fw * fh * 4), hex = h => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
+  const colorAt = (gx, gz) => { const mx = gx < GW / 2 ? gx : GW - 1 - gx;
+    if (gz >= 25 && gx >= 13 && gx <= 26) return 0x6a4545; if (gz <= 5 && gx >= 16 && gx <= 23) return 0x40466a; if (gz <= 9 && mx <= 11) return gx < GW / 2 ? 0x3d4d78 : 0x3d7850;
+    if (mx >= 8 && mx <= 13 && gz >= 12 && gz <= 17) return 0x6b4f33; if (gx >= 16 && gx <= 23 && gz >= 10 && gz <= 19) return 0x504d5c; if (mx >= 1 && mx <= 6 && gz >= 10 && gz <= 24) return 0x4d4a45;
+    if (gz >= 20 && gz <= 24) return 0x5a544a; return 0x3a3640; };
+  for (let r = 0; r < fh; r++) for (let c = 0; c < fw; c++) { const gz = Math.floor((fh - 1 - r) / FT), gx = Math.floor(c / FT), [R, Gc, B] = hex(colorAt(gx, gz)), k = (((c >> 2) + ((fh - 1 - r) >> 2)) & 1) ? 1 : 0.92, i = (r * fw + c) * 4; data[i] = R * k; data[i + 1] = Gc * k; data[i + 2] = B * k; data[i + 3] = 255; }
+  const tex = new THREE.DataTexture(data, fw, fh, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(GW * CELL, GH * CELL), new THREE.MeshToonMaterial({ map: tex, gradientMap })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+})();
+(function buildLanterns() {
+  const pos = [], rope = []; let seed = 7; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let z = 1; z < GH - 1; z++) for (let x = 1; x < GW - 1; x++) if (grid[z][x] === '#') for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!isBlocked(x + dx, z + dz) && rr() < 0.3) { const c = G.cellToWorld(x, z); pos.push([c.x + dx * 1.7, 3.9, c.z + dz * 1.7]); }
+  for (const zc of [20.15, 23.85]) { const z = (zc - GH / 2) * CELL, ax = -(GW / 2 - 1) * CELL, bx = (GW / 2 - 1) * CELL, sag = t => 5.6 - Math.sin(Math.PI * t) * 0.9;
+    for (let i = 0; i < 40; i++) { const t0 = i / 40, t1 = (i + 1) / 40; rope.push(ax + (bx - ax) * t0, sag(t0), z, ax + (bx - ax) * t1, sag(t1), z); }
+    for (let i = 1; i < 38; i++) { const t = i / 38; pos.push([ax + (bx - ax) * t, sag(t) - 0.35, z]); } }
+  const g = new THREE.SphereGeometry(0.28, 10, 8); g.scale(1, 1.25, 1);
+  const inst = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0xffffff }), pos.length), m = new THREE.Matrix4(), c = new THREE.Color();
+  pos.forEach((p, i) => { m.setPosition(p[0], p[1], p[2]); inst.setMatrixAt(i, m); inst.setColorAt(i, c.setHex(i % 5 === 0 ? 0xffd27a : 0xff6a30)); }); scene.add(inst);
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(rope, 3)); scene.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x111111 })));
+  for (const [gx, gz] of [[19, 21], [5, 4], [34, 4], [19, 15], [19, 8], [19, 26], [5, 21], [34, 21], [19, 3]]) { const p = G.cellToWorld(gx, gz), l = new THREE.PointLight(0xff9a50, 26, 30, 2); l.position.set(p.x, 4, p.z); scene.add(l); pointLights.push(l); }
+})();
+
+function applyRes() { renderer.setPixelRatio(Math.min(devicePixelRatio, S.gfx.maxDpr) * S.gfx.scale * dynScale); renderer.setSize(innerWidth, innerHeight); }
+let perfAcc = 0, perfN = 0, goodWin = 0;
+function perfAdjust(dt) {                 // 自動解像度: 重ければ下げ、余裕が続けば戻す
+  if (!S.gfx.autoRes) return; perfAcc += dt; perfN++; if (perfAcc < 1.5) return; const avg = perfAcc / perfN; perfAcc = 0; perfN = 0;
+  if (avg > 0.026 && dynScale > 0.5) { dynScale = Math.max(0.5, dynScale - 0.1); goodWin = 0; applyRes(); }
+  else if (avg < 0.0185 && dynScale < 1) { if (++goodWin >= 3) { goodWin = 0; dynScale = Math.min(1, dynScale + 0.05); applyRes(); } } else goodWin = 0;
+}
+function applyGfx() {
+  applyRes(); pointLights.forEach((l, i) => { l.visible = i < S.gfx.lights; }); scene.fog = S.gfx.fog ? new THREE.Fog(0x0a0f2c, 25, 95) : null;
+  for (const o of outlineMeshes) o.visible = S.gfx.outline; $('mini').style.display = S.gfx.minimap ? 'block' : 'none'; $('dbg').style.display = S.gfx.debug ? 'block' : 'none'; $('fps').style.display = S.gfx.showFps ? 'block' : 'none';
+}
+
+/* ======================================================================
+ * 3. 音(左右パン + 距離減衰 + 壁越しのこもり)
+ * ====================================================================== */
+let AC = null, master = null, noiseBuf = null;
+function initAudio() {
+  if (AC) { AC.resume && AC.resume(); return; }
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = S.volume; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.6, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } catch (e) { AC = null; }
+}
+function makeOut(pos, vol) {
+  const g = AC.createGain(); let v = vol * S.sfxVol; if (!pos) { g.gain.value = v; g.connect(master); return g; }
+  const dx = pos.x - me.st.x, dz = pos.z - me.st.z, d = Math.hypot(dx, dz); if (d > 70) return null; v /= 1 + d / 5;
+  const occ = !G.lineClear(colliders, me.st.x, me.st.y + 1.5, me.st.z, pos.x, (pos.y || 0) + 1.2, pos.z); if (occ) v *= 0.6; g.gain.value = v;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = occ ? 700 : 9000; const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  if (pan) pan.pan.value = clamp(d > 0.01 ? (Math.cos(me.yaw) * dx - Math.sin(me.yaw) * dz) / d : 0, -1, 1);
+  g.connect(lp); if (pan) { lp.connect(pan); pan.connect(master); } else lp.connect(master); return g;
+}
+function sfxNoise(dur, freq, type, vol, pos) { if (!AC) return; const out = makeOut(pos, vol); if (!out) return; const src = AC.createBufferSource(); src.buffer = noiseBuf; const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq; const e = AC.createGain(), t0 = AC.currentTime; e.gain.setValueAtTime(1, t0); e.gain.exponentialRampToValueAtTime(0.001, t0 + dur); src.connect(f).connect(e).connect(out); src.start(t0); src.stop(t0 + dur); }
+function sfxTone(f0, f1, dur, vol, type = 'sine', pos = null) { if (!AC) return; const out = makeOut(pos, vol); if (!out) return; const o = AC.createOscillator(); o.type = type; const e = AC.createGain(), t0 = AC.currentTime; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur); e.gain.setValueAtTime(1, t0); e.gain.exponentialRampToValueAtTime(0.001, t0 + dur); o.connect(e).connect(out); o.start(t0); o.stop(t0 + dur); }
+const sndShot = (w, pos) => { const big = w === 'sniper' ? 1.6 : w === 'shotgun' ? 1.3 : 1; sfxTone(w === 'sniper' ? 300 : 520, 90, 0.14 * big, 0.35, 'sine', pos); sfxNoise(0.07 * big, w === 'smg' ? 3500 : 2200, 'highpass', 0.28, pos); };
+const sndStep = (pos, vol = 0.5) => sfxNoise(0.07, 380, 'lowpass', vol * S.stepVol, pos);
+const sndHit = head => sfxTone(head ? 1320 : 880, head ? 1320 : 880, 0.09, 0.2, 'triangle');
+
+/* ======================================================================
+ * 4. 状態: 自分 / 武器 / 他プレイヤー / ネットワーク
+ * ====================================================================== */
+const down = {}; const isDown = a => { const c = S.keys[a]; return !!down[c] || (c === 'ShiftLeft' && !!down.ShiftRight); };
+const me = { id: 0, name: '', team: 'atk', st: { x: 0, y: 0, z: 40, vx: 0, vy: 0, vz: 0, grounded: true, crouch: false }, prev: { x: 0, y: 0, z: 40 }, err: { x: 0, y: 0, z: 0 },
+  yaw: 0, pitch: 0, recoilP: 0, recoilY: 0, hp: 100, alive: false, eyeH: CFG.move.eye, seq: 0, pending: [], wid: 'rifle', ammo: {}, kills: 0, deaths: 0, spawnN: -1, stepDist: 0 };
+const weapon = { cooldown: 0, reloading: false, reloadT: 0, bloom: 0, spread: 0, movePart: 0, firePart: 0, fireBuf: 0, held: false, kick: 0, shots: 0, scope: 0, idle: 0 };
+const curW = () => WEAPONS[me.wid];
+const net = { tx: null, ok: false, offset: 0, rtt: 0, samples: [], room: '', mode: '', peer: null, send(o) { if (this.tx) this.tx(o); } };
+const serverNow = () => performance.now() + net.offset;
+const remotes = new Map(), snaps = []; let scoreT = { atk: 0, def: 0 }, killLimit = 20, matchOver = false;
+
+/* ---- ビューモデル ---- */
+const viewmodels = {};
+function buildViewmodel(id) {
+  const w = WEAPONS[id], g = new THREE.Group(), wood = toon(0x9a6a3a), body = toon(w.col), dark = toon(0x2a2a32);
+  const B = (sx, sy, sz, x, y, z, m) => { const q = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m); q.position.set(x, y, z); g.add(q); };
+  const C = (r, len, x, y, z, m) => { const q = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.1, len, 10), m); q.rotation.x = Math.PI / 2; q.position.set(x, y, z); g.add(q); };
+  let muz = -0.55;
+  if (id === 'pistol') { B(0.05, 0.07, 0.26, 0, -0.02, -0.05, body); C(0.018, 0.3, 0, 0.02, -0.25, wood); B(0.04, 0.11, 0.05, 0, -0.09, 0.03, wood); muz = -0.42; }
+  else if (id === 'smg') { B(0.06, 0.09, 0.34, 0, -0.02, -0.1, body); C(0.02, 0.25, 0, 0.02, -0.36, dark); B(0.035, 0.16, 0.05, 0, -0.12, -0.08, dark); B(0.04, 0.1, 0.05, 0, -0.09, 0.05, wood); muz = -0.5; }
+  else if (id === 'shotgun') { B(0.06, 0.09, 0.3, 0, -0.02, 0, wood); C(0.034, 0.7, 0, 0.02, -0.42, body); C(0.038, 0.24, 0, -0.03, -0.32, wood); B(0.05, 0.1, 0.3, 0, -0.04, 0.22, wood); muz = -0.78; }
+  else if (id === 'marksman') { B(0.06, 0.09, 0.4, 0, -0.02, -0.08, body); C(0.018, 0.4, 0, 0.03, -0.45, dark); B(0.05, 0.1, 0.24, 0, -0.04, 0.2, wood); B(0.03, 0.04, 0.12, 0, 0.06, -0.1, dark); muz = -0.66; }
+  else if (id === 'rifle') { B(0.06, 0.1, 0.5, 0, -0.02, -0.1, body); C(0.02, 0.4, 0, 0.03, -0.55, dark); B(0.05, 0.11, 0.28, 0, -0.05, 0.28, wood); B(0.04, 0.16, 0.06, 0, -0.14, -0.05, dark); B(0.02, 0.04, 0.2, 0, 0.05, -0.1, toon(0xe6b422)); muz = -0.76; }
+  else { B(0.06, 0.1, 0.6, 0, -0.02, -0.1, body); C(0.022, 0.7, 0, 0.03, -0.7, dark); B(0.05, 0.11, 0.3, 0, -0.05, 0.35, wood); C(0.04, 0.28, 0, 0.12, -0.2, dark); muz = -1.05; }
+  const m = new THREE.Object3D(); m.position.set(0, 0.02, muz); g.add(m); g.userData.muzzle = m; g.position.set(0.2, -0.18, -0.38); g.visible = false; camera.add(g); viewmodels[id] = g;
+}
+for (const id in WEAPONS) buildViewmodel(id);
+
+/* ---- 他プレイヤーのモデル ---- */
+function makeModel(friendly) {
+  const g = new THREE.Group(); g.rotation.order = 'YXZ'; const main = friendly ? 0x2c8a5a : 0x7a2a8a, trim = friendly ? 0xe8e0c0 : 0xe0e0f0;
+  const mk = (geo, mat, x, y, z, parent = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+  const legL = new THREE.Group(), legR = new THREE.Group(); legL.position.set(-0.13, 0.85, 0); legR.position.set(0.13, 0.85, 0); g.add(legL, legR);
+  const legGeo = new THREE.BoxGeometry(0.2, 0.85, 0.24); mk(legGeo, toon(0x2a2a3a), 0, -0.425, 0, legL); mk(legGeo, toon(0x2a2a3a), 0, -0.425, 0, legR);
+  mk(new THREE.BoxGeometry(0.52, 0.66, 0.3), toon(main), 0, 1.2, 0); mk(new THREE.BoxGeometry(0.54, 0.12, 0.32), toon(trim), 0, 1.0, 0);
+  const head = mk(new THREE.SphereGeometry(0.17, 14, 10), toon(0xf0d0b0), 0, 1.66, 0);
+  const mask = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.04), toon(friendly ? 0xf4f0e6 : 0xd02020)); mask.position.set(0, 0, -0.15); head.add(mask);
+  mk(new THREE.BoxGeometry(0.14, 0.14, 0.5), toon(main), 0.18, 1.3, -0.25); const gun = mk(new THREE.BoxGeometry(0.07, 0.1, 0.6), toon(0x333340), 0.18, 1.32, -0.6);
+  const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: 0x40ff90, depthTest: false, transparent: true, opacity: 0.9 })); marker.position.y = 2.25; marker.renderOrder = 999; marker.visible = friendly; g.add(marker);
+  scene.add(g); return { g, legL, legR, gun, marker };
+}
+function addRemote(id, name, team) {
+  if (id === me.id || remotes.has(id)) return; const friendly = team === me.team;
+  remotes.set(id, { id, name, team, friendly, model: makeModel(friendly), pos: V3(), yaw: 0, cr: 0, alive: false, hp: 100, w: 'rifle', k: 0, d: 0, deadT: 9, seen: 0, vel: V3(), spawnN: -1, step: 0 });
+}
+function removeRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.model.g); remotes.delete(id); }
+
+/* ======================================================================
+ * 5. エフェクト(弾道・着弾)
+ * ====================================================================== */
+const tracers = [], particles = [];
+const trailGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 6), trailMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.55 }), trailMatEn = new THREE.MeshBasicMaterial({ color: 0xc8a0ff, transparent: true, opacity: 0.55 });
+const corkGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.09, 8), corkMat = new THREE.MeshBasicMaterial({ color: 0xe0b878 }), UP = V3(0, 1, 0);
+function spawnTracer(start, end, enemy) {
+  const dir = end.clone().sub(start), dist = dir.length(); dir.divideScalar(dist || 1); const q = new THREE.Quaternion().setFromUnitVectors(UP, dir);
+  const trail = new THREE.Mesh(trailGeo, enemy ? trailMatEn : trailMat), cork = new THREE.Mesh(corkGeo, corkMat); trail.quaternion.copy(q); cork.quaternion.copy(q); scene.add(trail, cork); tracers.push({ start, dir, dist, t: 0, trail, cork });
+}
+function updateTracers(dt) {
+  for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += 140 * dt; const headD = Math.min(tr.t, tr.dist), tailD = Math.max(0, tr.t - 1.4);
+    if (tailD >= tr.dist) { scene.remove(tr.trail, tr.cork); tracers.splice(i, 1); continue; } const len = Math.max(0.001, headD - tailD); tr.trail.scale.y = len;
+    tr.trail.position.copy(tr.start).addScaledVector(tr.dir, tailD + len / 2); tr.cork.position.copy(tr.start).addScaledVector(tr.dir, headD); tr.cork.visible = tr.t <= tr.dist; }
+}
+const puffGeo = new THREE.SphereGeometry(0.035, 6, 5), puffCork = new THREE.MeshBasicMaterial({ color: 0xffe0a0 }), puffDust = new THREE.MeshBasicMaterial({ color: 0xcfc6b8 });
+function puff(point, mat, n = 5) { for (let i = 0; i < n; i++) { const m = new THREE.Mesh(puffGeo, mat); m.position.copy(point); scene.add(m); particles.push({ m, vel: V3(rnd(-1.5, 1.5), rnd(0, 2), rnd(-1.5, 1.5)), life: 0.4, max: 0.4 }); } }
+function updateParticles(dt) { for (let i = particles.length - 1; i >= 0; i--) { const p = particles[i]; p.life -= dt; if (p.life <= 0) { scene.remove(p.m); particles.splice(i, 1); continue; } p.vel.y -= 6 * dt; p.m.position.addScaledVector(p.vel, dt); p.m.scale.setScalar(Math.max(0.01, p.life / p.max)); } }
+
+/* ======================================================================
+ * 6. 武器(予測): 発射は即座に見せ、命中はサーバーの結果を待つ
+ * ====================================================================== */
+function updateSpread(dt) {
+  const w = curW(), sp = Math.hypot(me.st.vx, me.st.vz); weapon.bloom = Math.max(0, weapon.bloom - w.sp.rec * dt * 2);
+  const c = G.computeSpread(w, sp, me.st.grounded, me.st.crouch, weapon.scope > 0), target = c.base + c.add + weapon.bloom;
+  weapon.spread = target >= weapon.spread ? target : Math.max(target, weapon.spread - 0.6 * dt); weapon.movePart = c.add; weapon.firePart = weapon.bloom;
+}
+function tryFire() {
+  const w = curW(); if (!me.alive || !net.ok || matchOver || weapon.reloading || weapon.cooldown > 0) return false;
+  if ((me.ammo[w.id] || 0) <= 0) { startReload(); return false; }
+  me.ammo[w.id]--; weapon.cooldown = w.interval;
+  const yaw = me.yaw + me.recoilY, pitch = me.pitch + me.recoilP, basis = G.aimBasis(yaw, pitch), seed = (Math.random() * 4294967296) >>> 0, rng = G.mulberry32(seed);
+  const eye = [me.st.x, me.st.y + me.eyeH, me.st.z], muz = V3(); viewmodels[w.id].userData.muzzle.getWorldPosition(muz);
+  for (let i = 0; i < w.pellets; i++) {                          // サーバーと同じseed → ほぼ同じ弾道(視覚用。当たり判定は常にサーバー)
+    const d = G.spreadDir(basis, weapon.spread, rng), t = G.rayWorld(eye, d, colliders, 90);
+    if (i < 3) { const end = V3(eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t); spawnTracer(muz.clone(), end, false); if (t < 89) puff(end, puffDust, 3); }
+  }
+  net.send({ t: 'fire', wid: w.id, yaw: +yaw.toFixed(4), pitch: +pitch.toFixed(4), seed, rt: serverNow() - INTERP_MS });
+  weapon.bloom = Math.min(w.sp.bloomMax, weapon.bloom + w.sp.bloom); weapon.kick = 1; weapon.shots++; weapon.idle = 0;
+  me.recoilP += w.kick * (1 + Math.min(weapon.shots, 10) * 0.07); me.recoilY += rnd(-1, 1) * w.kickYaw; sndShot(w.id, null); if (w.id === 'sniper') weapon.scope = 0; return true;
+}
+function startReload() { const w = curW(); if (weapon.reloading || me.ammo[w.id] === w.mag || !me.alive) return; weapon.reloading = true; weapon.reloadT = w.reload; weapon.scope = 0; net.send({ t: 'reload' }); }
+function equip(wid) { if (!WEAPONS[wid] || wid === me.wid || !me.alive) return; me.wid = wid; weapon.reloading = false; weapon.scope = 0; weapon.cooldown = 0.4; weapon.shots = 0; for (const k in viewmodels) viewmodels[k].visible = false; net.send({ t: 'equip', wid }); }
+function toggleScope() { const w = curW(); if (!me.alive) return; if (w.scope) weapon.scope = (weapon.scope + 1) % (w.scope.length + 1); else if (w.zoom) weapon.scope = weapon.scope ? 0 : 1; }
+const zoomFactor = () => { const w = curW(); return weapon.scope > 0 ? (w.scope ? w.scope[weapon.scope - 1] : w.zoom) : 1; };
+
+/* ======================================================================
+ * 7. ネットワーク: 接続 / 時刻同期 / スナップショット / 予測の補正
+ * ====================================================================== */
+let joinWait = null, hostCore = null, hostTimer = null;
+const waitWelcome = ms => new Promise((resolve, reject) => { joinWait = { resolve, reject }; setTimeout(() => reject(new Error('参加に失敗しました(応答なし)')), ms); });
+/** ホストのメインループ(64Hz)。バックグラウンドでも止まりにくいよう Web Worker のタイマーで回す */
+function startHostTicker() {
+  const fallback = () => { if (hostTimer) hostTimer.stop(); const id = setInterval(() => hostCore && hostCore.tick(), 1000 / G.TICK); hostTimer = { stop: () => clearInterval(id) }; };
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob([`setInterval(() => postMessage(0), ${1000 / G.TICK});`], { type: 'text/javascript' })));
+    w.onmessage = () => hostCore && hostCore.tick(); w.onerror = fallback; hostTimer = { stop: () => w.terminate() };
+  } catch (e) { fallback(); }
+}
+async function startHost() {
+  let peer, code;
+  for (let i = 0; i < 5 && !peer; i++) { code = randCode(); try { peer = await makePeer(ROOM_PREFIX + code); } catch (e) { if (e.type !== 'unavailable-id') throw e; } }
+  if (!peer) throw new Error('部屋を作れませんでした。もう一度お試しください');
+  net.peer = peer; hostCore = createHost(G, { pass: S.net.pass });
+  peer.on('connection', c => {                                       // 友達が接続してきた
+    const conn = { get open() { return c.open; }, send: o => { if (c.open) c.send(o); }, close: () => c.close() };
+    const h = hostCore.attach(conn); c.on('data', d => h.message(d)); c.on('close', () => h.close()); c.on('error', () => h.close());
+  });
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });   // 仲介サーバーと切れても、すでに繋がった友達との通信は続く
+  startHostTicker();
+  const lc = { open: true, send: o => { const m = structuredClone(o); queueMicrotask(() => handleMsg(m)); }, close() {} };   // ホスト自身(ループバック)
+  const h = hostCore.attach(lc); net.tx = o => h.message(structuredClone(o)); net.room = code; net.mode = 'host';
+  const w = waitWelcome(5000); net.tx({ t: 'join', name: S.net.name, pass: S.net.pass }); return w;
+}
+async function startJoin() {
+  const code = (S.net.code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (code.length < 4) throw new Error('部屋コードを入力してください');
+  const peer = await makePeer(undefined); net.peer = peer;
+  const c = peer.connect(ROOM_PREFIX + code, { reliable: true, serialization: 'json' });
+  await new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error('部屋に接続できません。コード・ホストの起動・ネットワークを確認してください')), 15000);
+    c.on('open', () => { clearTimeout(t); res(); });
+    peer.on('error', e => { clearTimeout(t); rej(new Error(e.type === 'peer-unavailable' ? '部屋が見つかりません(コードを確認)' : '通信エラー: ' + e.type)); });
+  });
+  net.tx = o => { if (c.open) c.send(o); }; net.room = code; net.mode = 'join';
+  c.on('data', handleMsg); c.on('close', () => { const was = net.ok; net.ok = false; if (was) onDisconnected(); });
+  const w = waitWelcome(8000); net.tx({ t: 'join', name: S.net.name, pass: S.net.pass }); return w;
+}
+async function connect() {
+  try { return await (S.net.mode === 'join' ? startJoin() : startHost()); }
+  catch (e) { if (hostTimer) hostTimer.stop(); hostTimer = null; hostCore = null; if (net.peer) { try { net.peer.destroy(); } catch (_) {} } net.peer = null; net.tx = null; net.room = ''; throw e; }
+}
+window.addEventListener('beforeunload', e => { if (net.mode === 'host' && hostCore && hostCore.count() > 1) { e.preventDefault(); e.returnValue = ''; } });
+function onDisconnected() { for (const id of [...remotes.keys()]) removeRemote(id); me.alive = false; snaps.length = 0; if (document.pointerLockElement) document.exitPointerLock(); setStatus('切断されました。もう一度「プレイ開始」を押してください。', true); $('btnPlay').textContent = 'プレイ開始'; }
+setInterval(() => { if (net.ok) net.send({ t: 'ping', c: performance.now() }); }, 1000);
+function handleMsg(m) {
+  switch (m.t) {
+    case 'welcome': me.id = m.id; me.team = m.team; killLimit = m.killLimit; net.offset = m.st - performance.now(); for (const r of m.roster) addRemote(r.id, r.name, r.team); me.name = S.net.name; net.ok = true; if (joinWait) { joinWait.resolve(m); joinWait = null; } break;
+    case 'error': if (joinWait) { joinWait.reject(new Error(m.msg)); joinWait = null; } break;
+    case 'pj': addRemote(m.id, m.name, m.team); feed(`${m.name} が参加`); break;
+    case 'pl': { const r = remotes.get(m.id); if (r) feed(`${r.name} が退出`); removeRemote(m.id); break; }
+    case 'pong': { const now = performance.now(), rtt = now - m.c; net.rtt = rtt; net.samples.push({ rtt, off: m.s + rtt / 2 - now }); if (net.samples.length > 8) net.samples.shift(); net.offset = net.samples.reduce((a, b) => b.rtt < a.rtt ? b : a).off; break; }
+    case 'snap': onSnap(m); break;
+    case 'shot': onShotEv(m); break;
+    case 'hitc': flashHit(m.head); sndHit(m.head); break;
+    case 'dmg': onDamaged(m.from); break;
+    case 'kill': { const k = m.k === me.id ? me.name : remotes.get(m.k)?.name, v = m.v === me.id ? me.name : remotes.get(m.v)?.name; feed(`${k} ${m.part === 'h' ? '🎯' : '▸'} ${v}  [${WEAPONS[m.w]?.name || ''}]`); break; }
+    case 'matchend': matchOver = true; msg(`🏆 ${m.winner === me.team ? 'あなたのチームの勝利!' : '相手チームの勝利…'}`, 8); break;
+    case 'matchstart': matchOver = false; msg('新しいマッチ開始!', 2.5); break;
+  }
+}
+function onSnap(m) {
+  const s = m.self, mine = m.pl.find(p => p.i === me.id); snaps.push({ st: m.st, pl: new Map(m.pl.map(p => [p.i, p])) }); if (snaps.length > 40) snaps.shift();
+  scoreT = m.sc; matchOver = m.over;
+  for (const p of m.pl) { const r = remotes.get(p.i); if (r) { if (r.alive && !p.l) { r.deadT = 0; } r.k = p.k; r.d = p.d; r.hp = p.h; r.w = p.w; r.alive = !!p.l; if (p.n !== r.spawnN) { r.spawnN = p.n; r.snap = true; r.deadT = 9; } } }
+  for (const e of m.ev) if (e.e === 'step' && e.id !== me.id) { const r = remotes.get(e.id); sndStep({ x: e.x, y: e.y, z: e.z }, r && r.friendly ? 0.4 : 0.55); if (r && !r.friendly) soundPulses.push({ x: e.x, z: e.z, t: 1 }); }
+  if (!mine) return; me.kills = mine.k; me.deaths = mine.d; me.hp = s.hp;
+  const full = () => ({ x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: !!s.g, crouch: !!s.cr });
+  if (mine.n !== me.spawnN) {                                                // リスポーン/初回: 完全に同期し直す
+    me.spawnN = mine.n; me.st = full(); me.prev = { x: s.x, y: s.y, z: s.z }; me.pending = []; me.err = { x: 0, y: 0, z: 0 }; me.alive = !!s.al; me.yaw = mine.a; me.pitch = 0; me.recoilP = me.recoilY = 0;
+    for (const id in WEAPONS) me.ammo[id] = WEAPONS[id].mag; weapon.reloading = false; weapon.scope = 0; weapon.cooldown = 0.3; weapon.shots = 0; me.eyeH = CFG.move.eye; $('dead').style.display = 'none'; if (me.alive) msg('', 0); return;
+  }
+  if (me.alive && !s.al) { me.alive = false; weapon.scope = 0; $('dead').style.display = 'block'; $('dead').innerHTML = '撃破されました<br><small>まもなく復活します</small>'; return; }
+  if (!me.alive || !s.al) return;
+  // ---- 予測の補正(Reconciliation): サーバーの位置から「未確認の入力」を再実行 ----
+  const old = { x: me.st.x, y: me.st.y, z: me.st.z }, st = full(); me.pending = me.pending.filter(c => c.seq > m.ack);
+  for (const c of me.pending) G.stepPlayer(st, c.cmd, DT, colliders, c.ws);
+  const dx = old.x - st.x, dy = old.y - st.y, dz = old.z - st.z;
+  if (Math.hypot(dx, dy, dz) > 3) { me.err = { x: 0, y: 0, z: 0 }; me.prev = { x: st.x, y: st.y, z: st.z }; }     // 大きくずれた → 即座に瞬間移動
+  else { me.err.x += dx; me.err.y += dy; me.err.z += dz; me.prev.x -= dx; me.prev.y -= dy; me.prev.z -= dz; }     // 小さなずれ → 見た目は徐々に追従
+  me.st = st;
+  const w = curW(); if (s.am !== undefined && !weapon.reloading && Math.abs(me.ammo[w.id] - s.am) > 1) me.ammo[w.id] = s.am;
+}
+function onShotEv(m) {
+  if (m.id === me.id) return; const r = remotes.get(m.id); const o = V3(m.o[0], m.o[1], m.o[2]); const mp = V3(); if (r) { r.model.gun.getWorldPosition(mp); } else mp.copy(o);
+  sndShot(m.w, { x: m.o[0], y: m.o[1], z: m.o[2] });
+  for (const e of m.ends) { const end = V3(e[0], e[1], e[2]); spawnTracer(mp.clone(), end, !(r && r.friendly)); if (e[3]) puff(end, puffCork, 4); else if (end.distanceTo(o) < 89) puff(end, puffDust, 3); }
+}
+function onDamaged(fromId) {
+  const ov = $('dmgov'); ov.style.transition = 'none'; ov.style.opacity = 0.9; void ov.offsetWidth; ov.style.transition = 'opacity .8s'; ov.style.opacity = 0; sfxTone(200, 100, 0.12, 0.4);
+  const r = remotes.get(fromId); if (r) { const ang = Math.atan2(-(r.pos.x - me.st.x), -(r.pos.z - me.st.z)) - me.yaw, d = $('dmgdir'); d.style.transition = 'none'; d.style.transform = `rotate(${-ang}rad)`; d.style.opacity = 1; void d.offsetWidth; d.style.transition = 'opacity 1.2s'; d.style.opacity = 0; }
+}
+/** 他プレイヤーの補間: 「サーバー時刻 - 100ms」の位置を、前後のスナップショットから線形補間 */
+function updateRemotes(dt) {
+  if (!snaps.length) return;
+  const rt = serverNow() - INTERP_MS; let i = snaps.length - 1; while (i > 0 && snaps[i].st > rt) i--;
+  const a = snaps[i], b = snaps[i + 1] || a, k = b.st > a.st ? clamp((rt - a.st) / (b.st - a.st), 0, 1) : 1;
+  for (const r of remotes.values()) {
+    const pa = a && a.pl.get(r.id), pb = (b && b.pl.get(r.id)) || pa; if (!pa) continue;
+    if (r.snap || Math.hypot(pb.x - pa.x, pb.z - pa.z) > 6) { r.pos.set(pb.x, pb.y, pb.z); r.yaw = pb.a; r.snap = false; } else { r.pos.set(lerp(pa.x, pb.x, k), lerp(pa.y, pb.y, k), lerp(pa.z, pb.z, k)); let dy = pb.a - pa.a; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; r.yaw = pa.a + dy * k; }
+    r.cr = pb.c; const m = r.model, sp = r.vel.set(pb.x - pa.x, 0, pb.z - pa.z).length() / Math.max(0.001, (b.st - a.st) / 1000);
+    m.g.position.copy(r.pos); m.g.rotation.y = r.yaw; m.g.scale.y = lerp(m.g.scale.y, r.cr ? 0.75 : 1, Math.min(1, dt * 12));
+    if (!r.alive) { r.deadT += dt; m.g.visible = r.deadT < 2.5; m.g.rotation.x = -Math.min(r.deadT * 4, Math.PI / 2); m.marker.visible = false; }
+    else { m.g.visible = true; m.g.rotation.x = 0; r.step += sp * dt * 1.6; const sw = Math.sin(r.step * 2) * Math.min(1, sp / 3) * 0.7; m.legL.rotation.x = sw; m.legR.rotation.x = -sw; m.marker.visible = r.friendly; }
+    r.seen = Math.max(0, r.seen - dt);
+  }
+}
+let visT = 0;
+function updateVision(dt) {                                     // 味方の視界に入った敵だけ、ミニマップに表示する(情報戦)
+  visT -= dt; if (visT > 0 || !me.alive) return; visT = 0.2;
+  const viewers = [{ x: me.st.x, y: me.st.y + me.eyeH, z: me.st.z, fov: true }]; for (const r of remotes.values()) if (r.friendly && r.alive) viewers.push({ x: r.pos.x, y: r.pos.y + 1.5, z: r.pos.z });
+  for (const r of remotes.values()) if (!r.friendly && r.alive) for (const v of viewers) {
+    const dx = r.pos.x - v.x, dz = r.pos.z - v.z, d = Math.hypot(dx, dz); if (d > 80) continue;
+    if (v.fov && d > 3 && (-Math.sin(me.yaw) * dx - Math.cos(me.yaw) * dz) / d < 0.45) continue;
+    if (G.lineClear(colliders, v.x, v.y, v.z, r.pos.x, r.pos.y + 1.3, r.pos.z)) { r.seen = 0.6; break; }
+  }
+}
+
+/* ======================================================================
+ * 8. HUD / ミニマップ / クロスヘア
+ * ====================================================================== */
+const EL = {}; for (const id of ['sc', 'al', 'kill', 'bl', 'br', 'center', 'fps', 'dbg', 'scope', 'net', 'score', 'hitm']) EL[id] = $(id);
+const setHTML = (el, v) => { if (el._v !== v) { el._v = v; el.innerHTML = v; } }, setStyle = (el, p, v) => { if (el['_s' + p] !== v) { el['_s' + p] = v; el.style[p] = v; } };
+const killfeed = []; const feed = t => { killfeed.push({ txt: t, t: 6 }); if (killfeed.length > 6) killfeed.shift(); };
+let msgTimer = 0; function msg(t, d = 2.5) { EL.center._v = t; EL.center.textContent = t; msgTimer = d; }
+function flashHit(head) { const h = EL.hitm; h.style.color = head ? '#ffd23c' : '#fff'; h.style.transition = 'none'; h.style.opacity = 1; void h.offsetWidth; h.style.transition = 'opacity .25s'; h.style.opacity = 0; }
+const soundPulses = [], mm = $('mini').getContext('2d'); let mmStatic = null, mmT = 0;
+function drawMinimap(dt) {
+  const W = 200, H = 150, k = W / GW, kz = H / GH; mm.clearRect(0, 0, W, H);
+  if (!mmStatic) { mmStatic = document.createElement('canvas'); mmStatic.width = W; mmStatic.height = H; const c2 = mmStatic.getContext('2d');
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) { const c = grid[z][x]; if (c === '.') continue; c2.fillStyle = c === '#' ? '#8a8a95' : c === 'y' ? '#a0603a' : '#6a5a4a'; c2.fillRect(x * k, z * kz, k, kz); }
+    c2.fillStyle = '#6cf8'; c2.font = '11px sans-serif'; c2.fillText('A', G.SITES.A.cx * k - 3, G.SITES.A.cz * kz + 4); c2.fillText('B', G.SITES.B.cx * k - 3, G.SITES.B.cz * kz + 4); }
+  mm.drawImage(mmStatic, 0, 0); const tx = x => (x / CELL + GW / 2) * k, tz = z => (z / CELL + GH / 2) * kz;
+  if (S.gfx.soundViz) for (let i = soundPulses.length - 1; i >= 0; i--) { const p = soundPulses[i]; p.t -= dt; if (p.t <= 0) { soundPulses.splice(i, 1); continue; } if (Math.hypot(p.x - me.st.x, p.z - me.st.z) > 40) continue; mm.strokeStyle = `rgba(255,220,80,${p.t})`; mm.lineWidth = 2; mm.beginPath(); mm.arc(tx(p.x), tz(p.z), (1 - p.t) * 10 + 3, 0, 7); mm.stroke(); }
+  for (const r of remotes.values()) if (r.alive && (r.friendly || r.seen > 0)) { mm.fillStyle = r.friendly ? '#4f8' : '#f44'; mm.beginPath(); mm.arc(tx(r.pos.x), tz(r.pos.z), r.friendly ? 3.5 : 4, 0, 7); mm.fill(); }
+  if (me.alive) { mm.save(); mm.translate(tx(me.st.x), tz(me.st.z)); mm.rotate(-me.yaw); mm.fillStyle = '#fff'; mm.beginPath(); mm.moveTo(0, -6); mm.lineTo(4, 4); mm.lineTo(-4, 4); mm.fill(); mm.restore(); }
+}
+let hudAcc = 1, fpsAcc = 0, fpsN = 0;
+function updateHUD(dt) {
+  if (msgTimer > 0 && (msgTimer -= dt) <= 0) { EL.center._v = ''; EL.center.textContent = ''; }
+  for (let i = killfeed.length - 1; i >= 0; i--) if ((killfeed[i].t -= dt) < 0) killfeed.splice(i, 1);
+  const w = curW(); setStyle(EL.scope, 'display', (weapon.scope > 0 && w.scope && me.alive) ? 'block' : 'none');
+  setStyle(EL.score, 'display', down[S.keys.score] ? 'block' : 'none'); fpsAcc += dt; fpsN++; hudAcc += dt; if (hudAcc < 0.1) return; hudAcc = 0;
+  const mine = scoreT[me.team] || 0, theirs = scoreT[me.team === 'atk' ? 'def' : 'atk'] || 0;
+  setHTML(EL.sc, `<span style="color:#7dffb0">${mine}</span> — <span style="color:#d29bff">${theirs}</span>`);
+  setHTML(EL.al, `${me.team === 'atk' ? '攻撃側' : '防衛側'}チーム / ${killLimit}キル先取`);
+  setHTML(EL.kill, killfeed.map(k => `<div>${k.txt}</div>`).join('<br>'));
+  setHTML(EL.bl, `<span class="big">♥ ${Math.ceil(me.hp)}</span><br><span style="font-size:14px">K ${me.kills} / D ${me.deaths}</span>`);
+  setHTML(EL.br, `<span class="big">${weapon.reloading ? 'RELOAD…' : (me.ammo[w.id] ?? 0) + ' / ' + w.mag}</span><small>${w.name}${weapon.scope ? '  🔍×' + zoomFactor() : ''}</small>`);
+  setHTML(EL.net, !net.ok ? '' : (net.mode === 'host' ? '🏠 ホスト' : `ping ${Math.round(net.rtt)} ms`) + ` ・部屋 ${net.room}`);
+  if (S.gfx.showFps) { setHTML(EL.fps, Math.round(fpsN / fpsAcc) + ' fps' + (dynScale < 0.99 ? `  (解像度 ${Math.round(dynScale * 100)}%)` : '')); } fpsAcc = 0; fpsN = 0;
+  if (S.gfx.debug) { const i = renderer.info.render; setHTML(EL.dbg, `速度 ${Math.hypot(me.st.vx, me.st.vz).toFixed(1)} m/s<br>散布 ${(weapon.spread * 180 / Math.PI).toFixed(2)}°<br>draw ${i.calls} / tri ${i.triangles}<br>pending ${me.pending.length}  rtt ${net.rtt.toFixed(0)}ms<br>players ${remotes.size + 1}`); }
+  if (down[S.keys.score]) { const rows = [me, ...remotes.values()].map(p => ({ n: p.name, t: p.team, k: p.kills ?? p.k, d: p.deaths ?? p.d, me: p === me })).sort((a, b) => b.k - a.k);
+    setHTML(EL.score, `<table><tr><th>名前</th><th>チーム</th><th>K</th><th>D</th></tr>${rows.map(r => `<tr style="${r.me ? 'color:#ffd23c' : ''}"><td>${r.n}</td><td>${r.t === 'atk' ? '攻撃' : '防衛'}</td><td>${r.k}</td><td>${r.d}</td></tr>`).join('')}</table>`); }
+}
+const xctx = $('xhair').getContext('2d');
+function renderCrosshair() {
+  xctx.clearRect(0, 0, 400, 400); const w = curW(); if (!me.alive || (weapon.scope > 0 && w.scope)) return;
+  const k = 0.5 * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  drawCrosshair(xctx, 200, 200, S.xhair, Math.tan(weapon.movePart) * k * 2, Math.tan(weapon.firePart + (w.pellets > 1 ? weapon.spread * 0.3 : 0)) * k * 2);
+}
+
+/* ======================================================================
+ * 9. メインループ(64Hz固定tick + 描画補間)
+ * ====================================================================== */
+let locked = false, acc = 0, last = performance.now();
+function tick() {
+  me.prev.x = me.st.x; me.prev.y = me.st.y; me.prev.z = me.st.z;
+  if (me.alive && net.ok) {
+    const on = locked, ix = on ? (isDown('right') ? 1 : 0) - (isDown('left') ? 1 : 0) : 0, iz = on ? (isDown('back') ? 1 : 0) - (isDown('fwd') ? 1 : 0) : 0, yq = Math.round(me.yaw * 1e4) / 1e4, pq = Math.round(me.pitch * 1e4) / 1e4;
+    const cmd = { ix, iz, jump: on && isDown('jump') ? 1 : 0, cr: on && isDown('crouch') ? 1 : 0, walk: on && isDown('walk') ? 1 : 0, yaw: yq }, ws = curW().speed * (weapon.scope > 0 ? 0.6 : 1);
+    G.stepPlayer(me.st, cmd, DT, colliders, ws); me.seq++; me.pending.push({ seq: me.seq, cmd, ws }); if (me.pending.length > 256) me.pending.shift();
+    net.send({ t: 'cmd', seq: me.seq, ix, iz, jump: cmd.jump, cr: cmd.cr, walk: cmd.walk, yaw: yq, pitch: pq, sc: weapon.scope > 0 ? 1 : 0 });
+    const sp = Math.hypot(me.st.vx, me.st.vz); if (me.st.grounded && sp > CFG.move.walkSpeed + 0.3 && !cmd.walk && !cmd.cr) { me.stepDist += sp * DT; if (me.stepDist >= CFG.footstepStride) { me.stepDist = 0; sndStep(null, 0.25); } } else if (sp < 0.5) me.stepDist = CFG.footstepStride * 0.6;
+  }
+  weapon.cooldown = Math.max(0, weapon.cooldown - DT);
+  if (weapon.reloading) { weapon.reloadT -= DT; if (weapon.reloadT <= 0) { weapon.reloading = false; me.ammo[me.wid] = curW().mag; } }
+  updateSpread(DT); weapon.fireBuf -= DT; weapon.idle += DT; const w = curW();
+  if (me.alive && locked) { if (weapon.fireBuf > 0 && tryFire()) weapon.fireBuf = 0; else if (weapon.held && w.auto && weapon.cooldown <= 0) tryFire(); }
+  if (weapon.idle > w.interval * 1.5) weapon.shots = Math.max(0, weapon.shots - 1);
+  if (weapon.idle > w.interval * 1.4) { const d = Math.exp(-9 * DT); me.recoilP *= d; me.recoilY *= d; }
+}
+function render(frameDt, alpha, now) {
+  updateTracers(frameDt); updateParticles(frameDt); updateRemotes(frameDt); updateVision(frameDt);
+  const dec = Math.pow(0.82, frameDt * 60); me.err.x *= dec; me.err.y *= dec; me.err.z *= dec;                     // 補正のずれを滑らかに消す
+  const eyeT = me.st.crouch ? CFG.move.crouchEye : CFG.move.eye; me.eyeH += (eyeT - me.eyeH) * Math.min(1, frameDt * 14);
+  const zf = zoomFactor(), fovT = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(S.fov / 2)) / zf) * 180 / Math.PI;
+  if (Math.abs(camera.fov - fovT) > 0.05) { camera.fov += (fovT - camera.fov) * Math.min(1, frameDt * 16); camera.updateProjectionMatrix(); }
+  camera.position.set(lerp(me.prev.x, me.st.x, alpha) + me.err.x, lerp(me.prev.y, me.st.y, alpha) + me.err.y + me.eyeH, lerp(me.prev.z, me.st.z, alpha) + me.err.z);
+  camera.rotation.set(me.pitch + me.recoilP, me.yaw + me.recoilY, 0);
+  const w = curW(), vm = viewmodels[w.id]; vm.visible = S.gfx.viewmodel && me.alive && !(weapon.scope > 0 && w.scope); weapon.kick = Math.max(0, weapon.kick - frameDt * 7);
+  const sp = Math.hypot(me.st.vx, me.st.vz), bob = S.gfx.bob && me.st.grounded ? Math.sin(now * 0.012) * Math.min(1, sp / CFG.move.runSpeed) * 0.008 : 0;
+  vm.position.set(weapon.scope && w.zoom ? 0.0 : 0.2, -0.18 + bob, -0.38 + weapon.kick * 0.06); vm.rotation.x = weapon.kick * 0.14 - (weapon.reloading ? 0.7 : 0);
+  renderCrosshair(); mmT += frameDt; if (S.gfx.minimap && mmT > 0.066) { drawMinimap(mmT); mmT = 0; } updateHUD(frameDt); renderer.render(scene, camera);
+}
+function frame(now) {
+  requestAnimationFrame(frame); const frameDt = Math.min((now - last) / 1000, 0.1); last = now; perfAdjust(frameDt);
+  if (net.ok) { acc += frameDt; while (acc >= DT) { tick(); acc -= DT; } }
+  render(frameDt, net.ok ? acc / DT : 1, now);
+}
+
+/* ======================================================================
+ * 10. 入力
+ * ====================================================================== */
+const sensRad = () => S.sens * 0.07 * Math.PI / 180 * (weapon.scope > 0 ? S.adsMul * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.tan(THREE.MathUtils.degToRad(S.fov / 2)) : 1);
+document.addEventListener('mousemove', e => { if (!locked || !me.alive) return; const mx = clamp(e.movementX, -300, 300), my = clamp(e.movementY, -300, 300); me.yaw -= mx * sensRad(); me.pitch = clamp(me.pitch - my * sensRad() * (S.invertY ? -1 : 1), -1.55, 1.55); });
+document.addEventListener('mousedown', e => { if (!locked) return; if (e.button === 0) { weapon.held = true; weapon.fireBuf = 0.12; } else if (e.button === 2) toggleScope(); });
+document.addEventListener('mouseup', e => { if (e.button === 0) weapon.held = false; });
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('wheel', e => { if (!locked) return; const i = WEAPON_ORDER.indexOf(me.wid); equip(WEAPON_ORDER[(i + (e.deltaY > 0 ? 1 : WEAPON_ORDER.length - 1)) % WEAPON_ORDER.length]); });
+let rebinding = null;
+document.addEventListener('keydown', e => {
+  if (rebinding) { e.preventDefault(); if (e.code !== 'Escape') { S.keys[rebinding.action] = e.code; saveSettings(); } rebinding.done(); rebinding = null; return; }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  down[e.code] = true; if (!locked) return; if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
+  if (e.code === S.keys.reload) startReload(); const di = e.code.startsWith('Digit') ? +e.code.slice(5) - 1 : -1; if (di >= 0 && di < WEAPON_ORDER.length) equip(WEAPON_ORDER[di]);
+});
+document.addEventListener('keyup', e => { down[e.code] = false; });
+window.addEventListener('blur', () => { for (const k in down) down[k] = false; weapon.held = false; });
+window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+function lockPointer() { initAudio(); try { const p = $('c').requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === $('c'); $('menu').style.display = locked ? 'none' : 'flex'; if (!locked) { for (const k in down) down[k] = false; weapon.held = false; if (net.ok) $('btnPlay').textContent = '再開'; } });
+$('btnPlay').addEventListener('click', async () => {
+  if (net.ok) { lockPointer(); return; } lockPointer(); setStatus('接続中…', false);
+  try { await connect(); setStatus('', false); } catch (e) { if (document.pointerLockElement) document.exitPointerLock(); setStatus('⚠ ' + e.message, true); }
+});
+$('btnReset').addEventListener('click', () => { if (confirm('すべての設定を初期化しますか?')) { const nm = S.net.name; S = structuredClone(DEFAULTS); S.net.name = nm; saveSettings(); applyGfx(); buildTab(curTab); camera.fov = S.fov; camera.updateProjectionMatrix(); } });
+
+/* ======================================================================
+ * 11. 設定メニュー(スキーマから自動生成)
+ * ====================================================================== */
+const body = $('body'); let curTab = 'join';
+function setStatus(t, isErr) { const el = document.getElementById('joinstat'); if (el) { el.textContent = t; el.className = isErr ? 'err' : 'hint'; } }
+function row(label, ctrl, valEl) { const d = document.createElement('div'); d.className = 'row'; const l = document.createElement('label'); l.textContent = label; d.append(l, ctrl); if (valEl) d.append(valEl); body.append(d); return d; }
+function slider(label, min, max, step, get, set, fmt = v => v) { const i = document.createElement('input'); i.type = 'range'; i.min = min; i.max = max; i.step = step; i.value = get(); const v = document.createElement('span'); v.className = 'val'; v.textContent = fmt(+i.value); i.oninput = () => { set(+i.value); v.textContent = fmt(+i.value); saveSettings(); applyAfter(); }; row(label, i, v); }
+function toggle(label, get, set) { const c = document.createElement('input'); c.type = 'checkbox'; c.checked = get(); c.onchange = () => { set(c.checked); saveSettings(); applyAfter(); }; row(label, c); }
+function select(label, opts, get, set) { const s = document.createElement('select'); opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; s.append(o); }); s.value = get(); s.onchange = () => { set(isNaN(+s.value) ? s.value : +s.value); saveSettings(); applyAfter(); }; row(label, s); }
+function keybind(label, action) { const b = document.createElement('button'); const show = () => b.textContent = S.keys[action].replace('Key', '').replace('Digit', '').replace('Left', ' L'); show(); b.onclick = () => { b.textContent = 'キーを押す… (Escで取消)'; rebinding = { action, done: show }; }; row(label, b); }
+const sec = t => { const h = document.createElement('h2'); h.className = 'sec'; h.textContent = t; body.append(h); };
+const hint = t => { const h = document.createElement('div'); h.className = 'hint'; h.innerHTML = t; body.append(h); };
+function applyAfter() { applyGfx(); camera.updateProjectionMatrix(); if (master) master.gain.value = S.volume; if (curTab === 'xhair') drawXhPreview(); }
+const TABS = [['join', '参加'], ['input', '操作'], ['gfx', '映像・HUD'], ['audio', '音'], ['xhair', 'クロスヘア'], ['guide', '遊び方']];
+function textInput(label, type, get, set, ph) { const i = document.createElement('input'); i.type = type; i.value = get(); i.placeholder = ph || ''; i.maxLength = 24; i.oninput = () => { set(i.value); saveSettings(); }; row(label, i); }
+function buildTab(id) {
+  curTab = id; body.innerHTML = ''; [...$('tabs').children].forEach(b => b.classList.toggle('on', b.dataset.id === id));
+  if (id === 'join') {
+    sec('友達と遊ぶ(インストール不要)');
+    textInput('プレイヤー名', 'text', () => S.net.name, v => S.net.name = v.slice(0, 14));
+    if (net.ok) {
+      const big = document.createElement('div'); big.style.cssText = 'font-size:34px;letter-spacing:8px;font-weight:700;text-align:center;margin:10px 0;color:#ffd27a'; big.textContent = net.room; body.append(big);
+      hint(net.mode === 'host' ? `あなたが<b>ホスト</b>です。上の<b>部屋コード</b>を友達に伝えてください。<br>⚠ このタブを閉じる/スリープすると全員切断されます。ホストのタブは開いたままにしてください。` : `部屋 <b>${net.room}</b> に接続中。「再開」で戻れます。`);
+    } else {
+      select('モード', [['host', '部屋を作る(あなたがホスト)'], ['join', '友達の部屋に入る']], () => S.net.mode, v => { S.net.mode = v; buildTab('join'); });
+      if (S.net.mode === 'join') textInput('部屋コード', 'text', () => S.net.code, v => S.net.code = v.toUpperCase().trim(), '例: K7M2P');
+      textInput(S.net.mode === 'join' ? '合言葉(ホストが設定した場合)' : '合言葉(任意・設定すると入室に必要)', 'password', () => S.net.pass, v => S.net.pass = v);
+      const st = document.createElement('div'); st.id = 'joinstat'; st.className = 'hint'; st.textContent = S.net.mode === 'join' ? '部屋コードを入れて、右上の「プレイ開始」を押してください。' : '右上の「プレイ開始」で部屋を作ります。表示される部屋コードを友達に伝えてください。'; body.append(st);
+    }
+    hint('チームは自動で割り振られます。チームデスマッチ: 先に20キルしたチームの勝利。倒されると3秒後に復活します。<br>通信は、ホストと友達のブラウザ同士の直接接続(WebRTC)です。');
+  } else if (id === 'input') {
+    sec('感度・視点'); slider('感度 (VALORANT換算)', 0.05, 5, 0.01, () => S.sens, v => S.sens = v, v => v.toFixed(2)); slider('スコープ感度倍率', 0.3, 2, 0.01, () => S.adsMul, v => S.adsMul = v, v => v.toFixed(2));
+    slider('視野角 FOV (垂直)', 50, 110, 1, () => S.fov, v => { S.fov = v; camera.fov = v; }, v => v + '°'); toggle('上下反転', () => S.invertY, v => S.invertY = v);
+    sec('キー設定(クリックして変更)'); const names = { fwd: '前進', back: '後退', left: '左', right: '右', jump: 'ジャンプ', crouch: 'しゃがみ', walk: '静かな歩き(足音なし)', reload: 'リロード', score: 'スコアボード(押している間)' }; for (const a in names) keybind(names[a], a);
+    hint('マウス: 左=射撃 / 右=スコープ・ズーム / ホイール=武器切替。数字キー 1〜6 = ピストル / SMG / 花火筒 / 狛犬 / 八咫 / 大玉砲。');
+  } else if (id === 'gfx') {
+    sec('パフォーマンスプリセット(重い時は「軽量」)'); const prw = document.createElement('div'); prw.className = 'row'; prw.style.gap = '6px';
+    for (const [n, o] of [['軽量', { outline: false, lights: 1, scale: 0.75, maxDpr: 1, fog: true, autoRes: true }], ['標準', { outline: true, lights: 3, scale: 1, maxDpr: 1.5, fog: true, autoRes: true }], ['高品質', { outline: true, lights: 9, scale: 1, maxDpr: 2, fog: true, autoRes: false }]]) { const b = document.createElement('button'); b.textContent = n; b.onclick = () => { Object.assign(S.gfx, o); dynScale = 1; saveSettings(); applyGfx(); buildTab('gfx'); }; prw.append(b); } body.append(prw);
+    sec('描画'); toggle('自動解像度(FPSが落ちたら自動で下げる)', () => S.gfx.autoRes, v => { S.gfx.autoRes = v; if (!v) dynScale = 1; }); slider('光源の数(多いほど重い)', 0, 9, 1, () => S.gfx.lights, v => S.gfx.lights = v);
+    slider('最大ピクセル比', 1, 2, 0.25, () => S.gfx.maxDpr, v => S.gfx.maxDpr = v, v => v.toFixed(2)); slider('描画解像度スケール', 0.4, 1.5, 0.05, () => S.gfx.scale, v => S.gfx.scale = v, v => v.toFixed(2));
+    toggle('輪郭線(セルルック)', () => S.gfx.outline, v => S.gfx.outline = v); toggle('霧', () => S.gfx.fog, v => S.gfx.fog = v);
+    sec('HUD'); toggle('ミニマップ', () => S.gfx.minimap, v => S.gfx.minimap = v); toggle('足音の可視化(ミニマップの波紋)', () => S.gfx.soundViz, v => S.gfx.soundViz = v); toggle('FPS表示', () => S.gfx.showFps, v => S.gfx.showFps = v);
+    toggle('デバッグ表示(通信・描画)', () => S.gfx.debug, v => S.gfx.debug = v); toggle('武器モデルを表示', () => S.gfx.viewmodel, v => S.gfx.viewmodel = v); toggle('歩行の揺れ', () => S.gfx.bob, v => S.gfx.bob = v);
+  } else if (id === 'audio') {
+    sec('音量'); slider('マスター音量', 0, 1, 0.01, () => S.volume, v => S.volume = v, v => Math.round(v * 100) + '%'); slider('効果音', 0, 2, 0.01, () => S.sfxVol, v => S.sfxVol = v, v => Math.round(v * 100) + '%'); slider('足音', 0, 3, 0.01, () => S.stepVol, v => S.stepVol = v, v => Math.round(v * 100) + '%');
+    hint('足音と銃声は位置に応じて左右に振られ、壁越しはこもって聞こえます。足音はサーバーが決めるので、全員に同じように聞こえます。');
+  } else if (id === 'xhair') buildXhairTab();
+  else if (id === 'guide') hint(`<b>ルール</b>:チームデスマッチ。敵チームを先に${killLimit}キル倒したチームの勝ち。<br><b>ストッピング</b>:動くと照準が開く。止まって撃つ / しゃがみで安定。<br><b>情報戦</b>:走ると足音が全員に聞こえる。<kbd>Shift</kbd>で静かに歩ける。敵はミニマップに「味方の視界に入った時だけ」表示。<br><b>ラグ補償</b>:撃った瞬間に見えていた位置で判定されます(約250msまで補償)。`);
+}
+let xhPrev = null, xhMove = false, xhFire = false;
+function drawXhPreview() { if (!xhPrev) return; const c = xhPrev.getContext('2d'); c.clearRect(0, 0, xhPrev.width, xhPrev.height); drawCrosshair(c, xhPrev.width / 2, xhPrev.height / 2, S.xhair, xhMove ? 14 : 0, xhFire ? 10 : 0); const t = document.getElementById('xhcode'); if (t && document.activeElement !== t) t.value = xhExport(S.xhair); }
+function buildXhairTab() {
+  const X = () => S.xhair, wrap = document.createElement('div'); wrap.className = 'xhwrap'; xhPrev = document.createElement('canvas'); xhPrev.width = 300; xhPrev.height = 200; wrap.append(xhPrev);
+  const side = document.createElement('div'); side.style.flex = '1'; side.style.minWidth = '260px'; side.innerHTML = '<div class="hint">プレビュー確認用:</div>';
+  const mk = (txt, setter) => { const l = document.createElement('label'); l.style.marginRight = '14px'; const c = document.createElement('input'); c.type = 'checkbox'; c.onchange = () => { setter(c.checked); drawXhPreview(); }; l.append(c, ' ' + txt); side.append(l); };
+  mk('移動中の広がり', v => xhMove = v); mk('射撃中の広がり', v => xhFire = v); body.append(wrap); wrap.append(side);
+  sec('プロファイルコード(VALORANT互換)'); const ta = document.createElement('textarea'); ta.id = 'xhcode'; ta.value = xhExport(X()); body.append(ta);
+  const bar = document.createElement('div'); bar.className = 'row'; bar.style.gap = '8px';
+  const b1 = document.createElement('button'); b1.textContent = 'インポート'; b1.onclick = () => { try { S.xhair = xhParse(ta.value); saveSettings(); buildTab('xhair'); } catch (e) { alert('読み込めません: ' + e.message); } };
+  const b2 = document.createElement('button'); b2.textContent = 'コードをコピー'; b2.onclick = () => { ta.value = xhExport(X()); ta.select(); try { document.execCommand('copy'); } catch (e) {} };
+  const b3 = document.createElement('button'); b3.textContent = '初期化'; b3.onclick = () => { S.xhair = XH_DEFAULT(); saveSettings(); buildTab('xhair'); }; bar.append(b1, b2, b3); body.append(bar);
+  const pr = document.createElement('div'); pr.className = 'row'; pr.style.gap = '6px'; pr.style.flexWrap = 'wrap';
+  for (const [n, c] of [['標準(緑・十字)', '0;P;c;1'], ['ドットのみ', '0;P;c;5;d;1;z;3;0b;0;1b;0'], ['シアン小十字', '0;P;c;5;0l;3;0o;2;0t;1;0a;1;1b;0'], ['赤・大きめ十字', '0;P;c;7;h;1;0l;7;0o;4;0t;2;0a;1;1l;3;1o;10;1a;0.5'], ['動的(移動で拡がる)', '0;P;c;1;0m;1;0f;1;1m;1;1f;1']]) { const b = document.createElement('button'); b.textContent = n; b.onclick = () => { S.xhair = xhParse(c); saveSettings(); buildTab('xhair'); }; pr.append(b); } body.append(pr);
+  hint('※ VALORANTのコード形式の主要パラメータに対応。未対応のキーは無視されます。'); const upd = () => { saveSettings(); drawXhPreview(); }, x = X();
+  sec('全般'); select('色', XH_COLORS.map((c, i) => [i, ['白', '緑', '黄緑', '緑黄', '黄', 'シアン', 'ピンク', '赤'][i]]), () => x.color, v => { x.color = v; x.custom = false; upd(); }); toggle('カスタム色を使う', () => x.custom, v => { x.custom = v; upd(); });
+  const hexIn = document.createElement('input'); hexIn.type = 'color'; hexIn.value = x.hex; hexIn.oninput = () => { x.hex = hexIn.value; x.custom = true; upd(); }; row('カスタム色', hexIn);
+  toggle('アウトライン', () => x.outlines, v => { x.outlines = v; upd(); }); slider('アウトライン不透明度', 0, 1, 0.01, () => x.outlineOpacity, v => { x.outlineOpacity = v; upd(); }, v => v.toFixed(2)); slider('アウトライン太さ', 0, 6, 1, () => x.outlineThickness, v => { x.outlineThickness = v; upd(); });
+  sec('中央ドット'); toggle('中央ドット', () => x.dot, v => { x.dot = v; upd(); }); slider('ドット不透明度', 0, 1, 0.01, () => x.dotOpacity, v => { x.dotOpacity = v; upd(); }, v => v.toFixed(2)); slider('ドットサイズ', 1, 6, 1, () => x.dotSize, v => { x.dotSize = v; upd(); });
+  for (const [key, label] of [['inner', '内側ライン'], ['outer', '外側ライン']]) { const L = x[key]; sec(label); toggle('表示', () => L.show, v => { L.show = v; upd(); }); slider('不透明度', 0, 1, 0.01, () => L.opacity, v => { L.opacity = v; upd(); }, v => v.toFixed(2));
+    slider('長さ(横)', 0, 20, 1, () => L.len, v => { L.len = v; upd(); }); slider('長さ(縦)', 0, 20, 1, () => L.lenV, v => { L.lenV = v; upd(); }); slider('太さ', 0, 10, 1, () => L.thick, v => { L.thick = v; upd(); });
+    slider('中心からの距離', 0, 20, 1, () => L.offset, v => { L.offset = v; upd(); }); toggle('移動エラー(動くと広がる)', () => L.moveErr, v => { L.moveErr = v; upd(); }); toggle('射撃エラー(撃つと広がる)', () => L.fireErr, v => { L.fireErr = v; upd(); }); }
+  drawXhPreview();
+}
+TABS.forEach(([id, label]) => { const b = document.createElement('button'); b.textContent = label; b.dataset.id = id; b.onclick = () => buildTab(id); $('tabs').append(b); });
+
+/* ======================================================================
+ * 12. 起動
+ * ====================================================================== */
+applyGfx(); buildTab('join'); camera.fov = S.fov; camera.updateProjectionMatrix(); requestAnimationFrame(frame);
+window.__shateki = { getHost: () => hostCore, net, me, remotes, net, snaps, weapon, S, G, connectForTest: () => connect(), tick, setLocked: v => { locked = v; }, renderer, equip, tryFire, curW };
+</script>
+</body>
+</html>
